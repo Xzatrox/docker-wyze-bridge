@@ -71,6 +71,15 @@ func (s *Server) proxyGet(w http.ResponseWriter, r *http.Request, upstream strin
 		return
 	}
 
+	// Forward Basic auth to go2rtc when the operator has enabled
+	// GO2RTC_API_USERNAME/PASSWORD. The browser sees a same-origin
+	// URL under the bridge on :5080, so we mint the upstream creds
+	// here rather than surfacing them to the client.
+	var authUser, authPass string
+	if go2rtc := s.go2rtc(); go2rtc != nil {
+		authUser, authPass = go2rtc.BasicAuthCreds()
+	}
+
 	// Use httputil.ReverseProxy for proper streaming + header handling.
 	proxy := &httputil.ReverseProxy{
 		Director: func(req *http.Request) {
@@ -83,6 +92,9 @@ func (s *Server) proxyGet(w http.ResponseWriter, r *http.Request, upstream strin
 			// doesn't need to worry about CORS headers of its own.
 			req.Header.Del("Origin")
 			req.Header.Del("Referer")
+			if authUser != "" && authPass != "" {
+				req.SetBasicAuth(authUser, authPass)
+			}
 		},
 		ModifyResponse: func(resp *http.Response) error {
 			// Our own CORS middleware will set Access-Control-* on the way
@@ -156,6 +168,9 @@ func (s *Server) handleWSProxy(w http.ResponseWriter, r *http.Request) {
 	req.Host = upstreamHost
 	req.RequestURI = ""
 	req.Header.Del("Origin")
+	if authUser, authPass := go2rtc.BasicAuthCreds(); authUser != "" && authPass != "" {
+		req.SetBasicAuth(authUser, authPass)
+	}
 
 	// Write request headers to upstream as raw HTTP
 	if err := req.Write(upstream); err != nil {

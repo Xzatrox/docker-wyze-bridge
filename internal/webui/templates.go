@@ -75,12 +75,12 @@ func (s *Server) renderIndex(w http.ResponseWriter, r *http.Request) {
 			Quality:   snap.Quality,
 			IP:        snap.Info.LanIP,
 			Recording: recording,
-			RTSPURL:   template.URL(fmt.Sprintf("rtsp://%s:8554/%s", bridgeIP, name)),
+			RTSPURL: template.URL(fmt.Sprintf("rtsp://%s:%d/%s", bridgeIP, s.cfg.Go2RTCRTSPPort, name)),
 			// Absolute URL through our bridge so it's usable when copied into
 			// an external HLS player. Relative paths work in-browser too but
 			// break when pasted elsewhere.
 			HLSURL:      fmt.Sprintf("http://%s:%d/hls/%s.m3u8", bridgeIP, s.cfg.BridgePort, name),
-			WebRTCURL:   fmt.Sprintf("http://%s:1984/api/webrtc?src=%s", bridgeIP, name),
+			WebRTCURL:   fmt.Sprintf("http://%s:%d/api/webrtc?src=%s", bridgeIP, s.cfg.Go2RTCAPIPort, name),
 			SnapshotURL: fmt.Sprintf("%s/api/snapshot/%s", basePath, name),
 			Go2RTCURL:   fmt.Sprintf("%s/ws?src=%s", basePath, name),
 		})

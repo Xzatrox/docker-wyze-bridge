@@ -38,6 +38,19 @@ type Config struct {
 	// recording; the user manages that upstream.
 	Go2RTCURL string
 
+	// go2rtc listener + auth knobs. Only meaningful when we're
+	// spawning the sidecar (Go2RTCURL empty). Zero-valued ports fall
+	// back to go2rtc's historical defaults (API 1984, RTSP 8554,
+	// WebRTC HTTP 8889). Empty auth = unauthenticated. Motivated by
+	// issues #123 (auth on 1984) and #108 (Frigate port collision).
+	Go2RTCAPIPort      int
+	Go2RTCAPIUsername  string
+	Go2RTCAPIPassword  string
+	Go2RTCRTSPPort     int
+	Go2RTCWebRTCPort   int
+	Go2RTCExtraStreams string // GO2RTC_EXTRA_STREAMS="name=src,name=src"
+	Go2RTCExtraYAML    string // GO2RTC_EXTRA_YAML="…"; appended verbatim
+
 	// MQTT
 	MQTTEnabled        bool
 	MQTTHost           string
@@ -157,6 +170,14 @@ func Load() (*Config, error) {
 
 		// External go2rtc (empty = spawn our own)
 		Go2RTCURL: env("GO2RTC_URL", ""),
+
+		Go2RTCAPIPort:      envInt("GO2RTC_API_PORT", 1984),
+		Go2RTCAPIUsername:  env("GO2RTC_API_USERNAME", ""),
+		Go2RTCAPIPassword:  env("GO2RTC_API_PASSWORD", ""),
+		Go2RTCRTSPPort:     envInt("GO2RTC_RTSP_PORT", 8554),
+		Go2RTCWebRTCPort:   envInt("GO2RTC_WEBRTC_PORT", 8889),
+		Go2RTCExtraStreams: env("GO2RTC_EXTRA_STREAMS", ""),
+		Go2RTCExtraYAML:    env("GO2RTC_EXTRA_YAML", ""),
 
 		// MQTT
 		MQTTEnabled:        envBool("MQTT_ENABLED", false),

@@ -10,6 +10,61 @@ import (
 	"github.com/rs/zerolog"
 )
 
+func TestAPIClient_BasicAuth_AttachedToEveryRequest(t *testing.T) {
+	// Every method that hits go2rtc must forward Basic auth when
+	// SetBasicAuth is configured. Missing this on any endpoint would
+	// break go2rtc customization for auth-protected setups (#123).
+	var gotAuth []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = append(gotAuth, r.Header.Get("Authorization"))
+		// GET /api/streams returns a valid map; others just 200.
+		if r.Method == "GET" && r.URL.Path == "/api/streams" && r.URL.Query().Get("src") == "" {
+			json.NewEncoder(w).Encode(map[string]*StreamInfo{})
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	c := NewAPIClient(server.URL, zerolog.Nop())
+	c.SetBasicAuth("admin", "hunter2")
+
+	ctx := context.Background()
+	_, _ = c.ListStreams(ctx)
+	_ = c.AddStream(ctx, "cam", "wyze://x")
+	_ = c.DeleteStream(ctx, "cam")
+	_, _ = c.GetStreamInfo(ctx, "cam")
+	_, _ = c.GetSnapshot(ctx, "cam")
+
+	if len(gotAuth) != 5 {
+		t.Fatalf("expected 5 requests, got %d", len(gotAuth))
+	}
+	// Basic YWRtaW46aHVudGVyMg== == "admin:hunter2"
+	want := "Basic YWRtaW46aHVudGVyMg=="
+	for i, h := range gotAuth {
+		if h != want {
+			t.Errorf("request[%d] Authorization = %q, want %q", i, h, want)
+		}
+	}
+}
+
+func TestAPIClient_NoAuth_HeaderAbsent(t *testing.T) {
+	// Default (no SetBasicAuth) must send zero Authorization headers
+	// so we don't perturb an unauthenticated go2rtc.
+	var got string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get("Authorization")
+		json.NewEncoder(w).Encode(map[string]*StreamInfo{})
+	}))
+	defer server.Close()
+
+	c := NewAPIClient(server.URL, zerolog.Nop())
+	_, _ = c.ListStreams(context.Background())
+	if got != "" {
+		t.Errorf("Authorization = %q, want empty", got)
+	}
+}
+
 func TestAPIClient_ListStreams(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/streams" {

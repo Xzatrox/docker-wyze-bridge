@@ -12,7 +12,7 @@ import (
 )
 
 func TestManager_NewManager(t *testing.T) {
-	m := NewManager("/usr/local/bin/go2rtc", "/config/go2rtc.yaml", zerolog.Nop())
+	m := NewManager("/usr/local/bin/go2rtc", "/config/go2rtc.yaml", 0, zerolog.Nop())
 
 	if m.binaryPath != "/usr/local/bin/go2rtc" {
 		t.Errorf("binaryPath = %q", m.binaryPath)
@@ -21,12 +21,19 @@ func TestManager_NewManager(t *testing.T) {
 		t.Errorf("configPath = %q", m.configPath)
 	}
 	if m.APIURL() != "http://127.0.0.1:1984" {
-		t.Errorf("APIURL = %q", m.APIURL())
+		t.Errorf("APIURL = %q (zero apiPort should default to 1984)", m.APIURL())
+	}
+}
+
+func TestManager_NewManager_CustomPort(t *testing.T) {
+	m := NewManager("/x", "/y", 1985, zerolog.Nop())
+	if m.APIURL() != "http://127.0.0.1:1985" {
+		t.Errorf("APIURL = %q, want http://127.0.0.1:1985", m.APIURL())
 	}
 }
 
 func TestManager_IsHealthy_NoServer(t *testing.T) {
-	m := NewManager("", "", zerolog.Nop())
+	m := NewManager("", "", 0, zerolog.Nop())
 	m.apiURL = "http://localhost:19998" // unlikely to be listening
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
@@ -38,7 +45,7 @@ func TestManager_IsHealthy_NoServer(t *testing.T) {
 }
 
 func TestManager_StartMissingBinary(t *testing.T) {
-	m := NewManager("/nonexistent/binary", "/tmp/test.yaml", zerolog.Nop())
+	m := NewManager("/nonexistent/binary", "/tmp/test.yaml", 0, zerolog.Nop())
 
 	err := m.Start(context.Background())
 	if err == nil {
@@ -84,7 +91,7 @@ func TestEmitLogLine(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			m := NewManager("", "", zerolog.New(&buf).Level(zerolog.TraceLevel))
+			m := NewManager("", "", 0, zerolog.New(&buf).Level(zerolog.TraceLevel))
 			m.emitLogLine(tc.line)
 
 			out := strings.TrimSpace(buf.String())

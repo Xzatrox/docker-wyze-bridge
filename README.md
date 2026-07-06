@@ -312,6 +312,52 @@ FILTER_MODELS=WYZECP1_JEF           # By model code (comma-separated)
 FILTER_MACS=AA:BB:CC:DD:EE:FF       # By MAC
 ```
 
+### go2rtc customization
+
+The bridge manages go2rtc as a subprocess. Its listeners, API auth,
+and stream set are all configurable without editing `go2rtc.yaml`
+directly — restart-safe env vars feed into the generated config
+each startup.
+
+**Listener ports** (default 1984 / 8554 / 8889). Change when
+something else on the host already wants those numbers — the
+classic case is Frigate sitting on `:1984`:
+
+```bash
+GO2RTC_API_PORT=1985
+GO2RTC_RTSP_PORT=8555
+GO2RTC_WEBRTC_PORT=8890
+```
+
+**Basic auth on go2rtc's `/api/*`.** Set both vars — either empty
+leaves auth off. The bridge forwards the same credentials internally
+so the WebUI grid / HLS / WebRTC player keep working without a
+browser prompt.
+
+```bash
+GO2RTC_API_USERNAME=admin
+GO2RTC_API_PASSWORD=change-me
+```
+
+**Extra streams.** Register additional stream sources alongside the
+Wyze cameras. Any URL scheme go2rtc understands (`rtsp://`,
+`onvif://`, `ffmpeg:`, etc.). Camera names always win on collision.
+
+```bash
+GO2RTC_EXTRA_STREAMS=frigate_front=rtsp://frigate:8554/front,onvif_gate=onvif://user:pass@10.0.0.30
+```
+
+**Verbatim YAML escape hatch** — appended after the managed
+section. Use for anything the knobs above don't cover:
+
+```bash
+GO2RTC_EXTRA_YAML="publish:
+  wyze_v3: rtmp://youtube/live/KEY
+"
+```
+
+HA add-on users get the same knobs under **Configuration → go2rtc**.
+
 ### Snapshots
 
 JPEG frames grabbed periodically or on sunrise/sunset events via go2rtc's

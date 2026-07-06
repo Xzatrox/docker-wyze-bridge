@@ -1,5 +1,37 @@
 # Changelog
 
+## 4.6.0
+
+**go2rtc customization** — three long-standing issues that all
+wanted a piece of the same knob: give the operator control over
+go2rtc's ports, its API auth, and the stream set it serves.
+
+- **Basic auth on go2rtc's `/api/*`** ([#123](https://github.com/IDisposable/docker-wyze-bridge/issues/123)):
+	set `GO2RTC_API_USERNAME` + `GO2RTC_API_PASSWORD` and the
+	bridge configures go2rtc's `api.username/password`, forwards
+	Basic auth on every internal API call, and proxies the same
+	credentials through the WebUI's HLS + WebSocket paths so
+	browsers don't see a login prompt.
+- **Port overrides** ([#108](https://github.com/IDisposable/docker-wyze-bridge/issues/108)):
+	`GO2RTC_API_PORT` / `GO2RTC_RTSP_PORT` / `GO2RTC_WEBRTC_PORT`
+	move go2rtc off `:1984` / `:8554` / `:8889` when something
+	else on the host wants them (e.g. Frigate on `:1984`).
+- **Extra streams pass-through** ([#106](https://github.com/IDisposable/docker-wyze-bridge/issues/106)):
+	`GO2RTC_EXTRA_STREAMS=name=source[,name=source]` registers
+	additional streams alongside the Wyze cameras — RTSP, ONVIF,
+	`ffmpeg:`, anything go2rtc understands. Camera names always
+	win on collision.
+- **Verbatim YAML escape hatch**: `GO2RTC_EXTRA_YAML` is appended
+	to the managed config after a visible marker for anything the
+	typed knobs above don't cover (custom `publish:` / `hass:` /
+	ONVIF discovery blocks, etc.).
+- HA add-on: new **go2rtc** options section wraps the same
+	surface — `api_port`, `api_username`, `api_password`,
+	`rtsp_port`, `webrtc_port`, `extra_streams`, `extra_yaml`.
+
+Internal WebUI URL generation (RTSP-copy button, WebRTC copy) now
+uses the configured ports instead of hard-coded 8554 / 1984.
+
 ## 4.5.0
 
 Runtime **TUTK → WebRTC auto-fallback** for cameras Wyze crippled

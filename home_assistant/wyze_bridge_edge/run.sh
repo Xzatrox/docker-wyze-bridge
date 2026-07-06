@@ -135,6 +135,26 @@ if bashio::config.has_value 'models.overrides'; then
     fi
 fi
 
+# ── go2rtc customization ─────────────────────────────────────────────────────
+# Simple scalars map straight to env vars. Ports fall back to 1984/8554/8889
+# if unset. api_username + api_password enable Basic auth on /api/*.
+export_opt 'go2rtc.api_port'     GO2RTC_API_PORT
+export_opt 'go2rtc.api_username' GO2RTC_API_USERNAME
+export_opt 'go2rtc.api_password' GO2RTC_API_PASSWORD
+export_opt 'go2rtc.rtsp_port'    GO2RTC_RTSP_PORT
+export_opt 'go2rtc.webrtc_port'  GO2RTC_WEBRTC_PORT
+export_opt 'go2rtc.extra_yaml'   GO2RTC_EXTRA_YAML
+
+# Extra streams: [{name, source}, ...] → "name=source,name=source" so the
+# Go side's ParseExtraStreams reads it identically to bare-Docker users.
+if bashio::config.has_value 'go2rtc.extra_streams'; then
+    joined=$(jq -r '.go2rtc.extra_streams[]? | select(.name and .source and .name != "" and .source != "") | "\(.name)=\(.source)"' /data/options.json | paste -sd,)
+    if [ -n "$joined" ]; then
+        export GO2RTC_EXTRA_STREAMS="$joined"
+        bashio::log.info "go2rtc extra streams: $joined"
+    fi
+fi
+
 # ── Per-camera overrides ────────────────────────────────────────────────────
 # Fan camera.options[] out to QUALITY_<NAME>/AUDIO_<NAME>/RECORD_<NAME> env
 # vars that internal/config/yaml.go:loadCamOverrides consumes. Bashio has no

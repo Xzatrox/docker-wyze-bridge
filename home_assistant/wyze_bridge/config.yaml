@@ -5,7 +5,7 @@ description: >-
 slug: wyze_bridge
 url: https://github.com/IDisposable/docker-wyze-bridge
 image: ghcr.io/idisposable/docker-wyze-bridge-homeassistant
-version: 4.5.0
+version: 4.6.0
 stage: stable
 arch:
   - amd64
@@ -60,6 +60,8 @@ options:
     manual_ips: []
   models:
     overrides: []
+  go2rtc:
+    extra_streams: []
   debug: {}
 schema:
   wyze:
@@ -133,6 +135,16 @@ schema:
         is_webrtc: bool?
         is_pan: bool?
         is_doorbell: bool?
+  go2rtc:
+    api_port: port?
+    api_username: str?
+    api_password: password?
+    rtsp_port: port?
+    webrtc_port: port?
+    extra_streams:
+      - name: str?
+        source: str?
+    extra_yaml: str?
   debug:
     log_level: list(trace|debug|info|warn|error)?
     force_iotc_detail: bool?

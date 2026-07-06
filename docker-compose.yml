@@ -64,6 +64,30 @@ services:
             # configure recording; manage those upstream.
             # - GO2RTC_URL=http://frigate:1984
 
+            # ── go2rtc customization (embedded mode only) ────────
+            # Listener ports — move go2rtc off default numbers when
+            # something else on the host wants 1984/8554/8889 (#108).
+            # If you're changing the API port, remember to also
+            # update the `ports:` block above.
+            # - GO2RTC_API_PORT=1984            # HTTP API + native UI
+            # - GO2RTC_RTSP_PORT=8554
+            # - GO2RTC_WEBRTC_PORT=8889
+            # Basic auth on /api/* (#123). Both fields must be set,
+            # or auth stays off. The bridge composes the same creds
+            # into its internal API client + HLS/WS proxy, so the
+            # WebUI works without a browser prompt.
+            # - GO2RTC_API_USERNAME=admin
+            # - GO2RTC_API_PASSWORD=change-me
+            # Extra streams merged into the generated go2rtc.yaml
+            # (#106). Format: name=source[,name=source] (or ;). Any
+            # scheme go2rtc supports — rtsp://, onvif://, ffmpeg:,
+            # etc. Camera names always win on collision.
+            # - GO2RTC_EXTRA_STREAMS=frigate_front=rtsp://frigate:8554/front,other=onvif://user:pass@10.0.0.30
+            # Verbatim YAML appended after the managed section as a
+            # last-resort escape hatch (custom publish:, hass:, etc.).
+            # Not validated by us; a syntax error crashes go2rtc.
+            # - GO2RTC_EXTRA_YAML="publish:\n  wyze_v3: rtmp://youtube/live/KEY\n"
+
             # ── MQTT (optional) ──────────────────────────────────
             # Any of the below MQTT_* implies MQTT_ENABLED=true.
             # - MQTT_ENABLED=true

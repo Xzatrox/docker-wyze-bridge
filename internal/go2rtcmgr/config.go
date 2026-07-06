@@ -27,6 +27,12 @@ type LogConfig struct {
 type APIConfig struct {
 	Listen string `yaml:"listen"`
 	Origin string `yaml:"origin"`
+	// Username/Password enable HTTP Basic auth on /api/*. Empty =
+	// unauthenticated (go2rtc's historical default). Loopback traffic
+	// from wyze-bridge still authenticates the same way — the bridge
+	// composes the same creds into its APIClient.
+	Username string `yaml:"username,omitempty"`
+	Password string `yaml:"password,omitempty"`
 }
 
 // RTSPConfig controls the go2rtc RTSP server.
@@ -77,6 +83,27 @@ type ConfigBuilder struct {
 	wbIP       string
 	streams    []StreamEntry
 	streamAuth []StreamAuthEntry
+
+	// Listener ports (defaults populated by NewConfigBuilder).
+	apiPort    int
+	rtspPort   int
+	webrtcPort int
+
+	// go2rtc /api/* Basic-auth. Empty = no auth (default).
+	apiUsername string
+	apiPassword string
+
+	// Extra streams supplied by the operator via GO2RTC_EXTRA_STREAMS
+	// or the HA add-on's `go2rtc.extra_streams` option. Rendered into
+	// the `streams:` map alongside camera streams; last-writer wins on
+	// name collision (extras loaded before camera streams so a camera
+	// name always beats an operator-defined stub).
+	extraStreams []StreamEntry
+	// extraYAML is appended verbatim to the generated YAML after the
+	// managed section. Escape hatch for anything the typed struct
+	// doesn't model (custom go2rtc `publish:`/`hass:` blocks, ONVIF
+	// discovery, etc.). No validation beyond parse-time YAML checks.
+	extraYAML string
 }
 
 // NewConfigBuilder creates a new builder for go2rtc config.
@@ -85,7 +112,102 @@ func NewConfigBuilder(logLevel, stunServer, wbIP string) *ConfigBuilder {
 		logLevel:   logLevel,
 		stunServer: stunServer,
 		wbIP:       wbIP,
+		apiPort:    1984,
+		rtspPort:   8554,
+		webrtcPort: 8889,
 	}
+}
+
+// SetAPIPort overrides the go2rtc HTTP API listen port. Zero = keep default.
+func (b *ConfigBuilder) SetAPIPort(port int) {
+	if port > 0 {
+		b.apiPort = port
+	}
+}
+
+// SetRTSPPort overrides the go2rtc RTSP listen port. Zero = keep default.
+func (b *ConfigBuilder) SetRTSPPort(port int) {
+	if port > 0 {
+		b.rtspPort = port
+	}
+}
+
+// SetWebRTCPort overrides the go2rtc WebRTC HTTP listen port. Zero = keep default.
+func (b *ConfigBuilder) SetWebRTCPort(port int) {
+	if port > 0 {
+		b.webrtcPort = port
+	}
+}
+
+// APIPort returns the currently configured API port. main.go uses
+// this to build the APIClient base URL after calling SetAPIPort.
+func (b *ConfigBuilder) APIPort() int { return b.apiPort }
+
+// SetAPIAuth enables HTTP Basic auth on go2rtc's /api/* endpoints.
+// Both fields must be non-empty to take effect; an empty pair is a no-op
+// so the operator can leave the env vars unset without accidentally
+// enabling auth with blank credentials.
+func (b *ConfigBuilder) SetAPIAuth(username, password string) {
+	if username == "" || password == "" {
+		return
+	}
+	b.apiUsername = username
+	b.apiPassword = password
+}
+
+// APIUsername / APIPassword expose the resolved API auth so main.go can
+// mint an APIClient that speaks the same credentials to go2rtc.
+func (b *ConfigBuilder) APIUsername() string { return b.apiUsername }
+func (b *ConfigBuilder) APIPassword() string { return b.apiPassword }
+
+// AddExtraStream registers an operator-supplied stream (from
+// GO2RTC_EXTRA_STREAMS or HA options). Same wire format as a camera
+// stream but tracked separately so future ClearStreams calls (used
+// for per-discovery-cycle regeneration) don't wipe them.
+func (b *ConfigBuilder) AddExtraStream(entry StreamEntry) {
+	b.extraStreams = append(b.extraStreams, entry)
+}
+
+// AppendRawYAML appends a fragment to the emitted YAML after the
+// managed section. Called last during WriteConfig; fragment is not
+// re-indented or re-validated by us — pass a valid go2rtc YAML block.
+func (b *ConfigBuilder) AppendRawYAML(fragment string) {
+	b.extraYAML = fragment
+}
+
+// ParseExtraStreams parses the GO2RTC_EXTRA_STREAMS format:
+//
+//	"name=source,name=source[;name=source]"
+//
+// Comma OR semicolon separates entries; each entry is name=source_url.
+// Names are trimmed; sources are taken as-is (may contain any URL/scheme
+// go2rtc understands). Entries missing an `=` are skipped silently — the
+// intent is that operators can hand the string back through unchanged from
+// the HA add-on without a schema round-trip.
+func ParseExtraStreams(raw string) []StreamEntry {
+	if raw == "" {
+		return nil
+	}
+	// Normalize semicolons to commas so we accept either separator.
+	normalized := strings.ReplaceAll(raw, ";", ",")
+	var entries []StreamEntry
+	for _, tok := range strings.Split(normalized, ",") {
+		tok = strings.TrimSpace(tok)
+		if tok == "" {
+			continue
+		}
+		eq := strings.Index(tok, "=")
+		if eq <= 0 || eq == len(tok)-1 {
+			continue
+		}
+		name := strings.TrimSpace(tok[:eq])
+		src := strings.TrimSpace(tok[eq+1:])
+		if name == "" || src == "" {
+			continue
+		}
+		entries = append(entries, StreamEntry{Name: name, URL: src})
+	}
+	return entries
 }
 
 // AddStream adds a camera stream to the config.
@@ -146,12 +268,14 @@ func (b *ConfigBuilder) Build() *Go2RTCConfig {
 	cfg := &Go2RTCConfig{
 		Log: LogConfig{Level: b.logLevel},
 		API: APIConfig{
-			Listen: ":1984",
-			Origin: "*", // needed for bridge WebUI on :5080 to use WebRTC player
+			Listen:   fmt.Sprintf(":%d", b.apiPort),
+			Origin:   "*", // needed for bridge WebUI on :5080 to use WebRTC player
+			Username: b.apiUsername,
+			Password: b.apiPassword,
 		},
-		RTSP: RTSPConfig{Listen: ":8554"},
+		RTSP: RTSPConfig{Listen: fmt.Sprintf(":%d", b.rtspPort)},
 		WebRTC: WebRTCConfig{
-			Listen: ":8889",
+			Listen: fmt.Sprintf(":%d", b.webrtcPort),
 		},
 		// Streams is nil when empty so YAML omits the key entirely.
 		// go2rtc parses an empty flow-style `streams: {}` unreliably.
@@ -165,7 +289,7 @@ func (b *ConfigBuilder) Build() *Go2RTCConfig {
 
 	if b.wbIP != "" {
 		cfg.WebRTC.Candidates = []string{
-			fmt.Sprintf("%s:8889", b.wbIP),
+			fmt.Sprintf("%s:%d", b.wbIP, b.webrtcPort),
 		}
 	}
 
@@ -176,8 +300,20 @@ func (b *ConfigBuilder) Build() *Go2RTCConfig {
 		cfg.RTSP.Password = b.streamAuth[0].Password
 	}
 
-	if len(b.streams) > 0 {
-		cfg.Streams = make(map[string]interface{}, len(b.streams))
+	total := len(b.streams) + len(b.extraStreams)
+	if total > 0 {
+		cfg.Streams = make(map[string]interface{}, total)
+	}
+	// Extras first so a camera name always overrides an operator-defined
+	// stub — cameras are the primary product; extras are auxiliary.
+	for _, s := range b.extraStreams {
+		var sources []string
+		if s.URL != "" {
+			sources = []string{s.URL}
+		} else {
+			sources = []string{}
+		}
+		cfg.Streams[s.Name] = sources
 	}
 	for _, s := range b.streams {
 		// Empty URL means publish-only slot (Gwell cameras: go2rtc
@@ -232,6 +368,19 @@ func (b *ConfigBuilder) WriteConfig(path string) error {
 			extra.WriteString(fmt.Sprintf("# Stream %q: record to %s\n", s.Name, s.RecordPath))
 		}
 		data = append(data, []byte(extra.String())...)
+	}
+
+	// Operator's GO2RTC_EXTRA_YAML escape hatch. Emitted after a
+	// visible marker so anyone reading the file understands what's
+	// managed vs. what came in verbatim.
+	if strings.TrimSpace(b.extraYAML) != "" {
+		data = append(data, []byte(
+			"\n# --- managed by wyze-bridge; anything above is regenerated ---\n"+
+				"# GO2RTC_EXTRA_YAML (verbatim operator input):\n")...)
+		if !strings.HasSuffix(b.extraYAML, "\n") {
+			b.extraYAML += "\n"
+		}
+		data = append(data, []byte(b.extraYAML)...)
 	}
 
 	return os.WriteFile(path, data, 0644)

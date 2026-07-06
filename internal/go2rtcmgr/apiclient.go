@@ -14,9 +14,11 @@ import (
 
 // APIClient communicates with the go2rtc HTTP API.
 type APIClient struct {
-	baseURL    string
-	httpClient *http.Client
-	log        zerolog.Logger
+	baseURL      string
+	httpClient   *http.Client
+	log          zerolog.Logger
+	authUsername string
+	authPassword string
 }
 
 // StreamInfo contains details about a go2rtc stream.
@@ -47,6 +49,34 @@ func NewAPIClient(baseURL string, log zerolog.Logger) *APIClient {
 	}
 }
 
+// SetBasicAuth attaches HTTP Basic auth credentials to every request
+// issued by this client. Empty username or password disables auth
+// (both fields must be set for auth to be sent).
+func (c *APIClient) SetBasicAuth(username, password string) {
+	c.authUsername = username
+	c.authPassword = password
+}
+
+// hasAuth reports whether Basic auth is configured.
+func (c *APIClient) hasAuth() bool {
+	return c.authUsername != "" && c.authPassword != ""
+}
+
+// applyAuth attaches Basic auth to a request when configured. Called
+// from every method that constructs a request against the go2rtc API.
+func (c *APIClient) applyAuth(req *http.Request) {
+	if c.hasAuth() {
+		req.SetBasicAuth(c.authUsername, c.authPassword)
+	}
+}
+
+// BasicAuthCreds returns the configured username/password so the WebUI
+// proxy layer (HLS reverse proxy + WS byte-copy) can forward the same
+// credentials to go2rtc. Empty strings mean auth is off.
+func (c *APIClient) BasicAuthCreds() (username, password string) {
+	return c.authUsername, c.authPassword
+}
+
 // BaseURL returns the go2rtc base URL (e.g. "http://127.0.0.1:1984").
 // Exposed so callers can proxy additional endpoints not covered by
 // this client's method surface (HLS segments, etc).
@@ -60,6 +90,7 @@ func (c *APIClient) ListStreams(ctx context.Context) (map[string]*StreamInfo, er
 	if err != nil {
 		return nil, err
 	}
+	c.applyAuth(req)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -101,6 +132,7 @@ func (c *APIClient) AddStream(ctx context.Context, name, streamURL string) error
 	if err != nil {
 		return err
 	}
+	c.applyAuth(req)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -125,6 +157,7 @@ func (c *APIClient) DeleteStream(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
+	c.applyAuth(req)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -149,6 +182,7 @@ func (c *APIClient) GetStreamInfo(ctx context.Context, name string) (*StreamInfo
 	if err != nil {
 		return nil, err
 	}
+	c.applyAuth(req)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -192,6 +226,7 @@ func (c *APIClient) GetSnapshot(ctx context.Context, name string) ([]byte, error
 	if err != nil {
 		return nil, err
 	}
+	c.applyAuth(req)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

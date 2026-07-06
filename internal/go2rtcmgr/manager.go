@@ -17,23 +17,40 @@ import (
 
 // Manager manages the go2rtc subprocess lifecycle.
 type Manager struct {
-	log        zerolog.Logger
-	binaryPath string
-	configPath string
-	apiURL     string
-	cmd        *exec.Cmd
-	ready      chan struct{}
-	mu         sync.Mutex
-	cancel     context.CancelFunc
+	log          zerolog.Logger
+	binaryPath   string
+	configPath   string
+	apiURL       string
+	apiPort      int
+	authUsername string
+	authPassword string
+	cmd          *exec.Cmd
+	ready        chan struct{}
+	mu           sync.Mutex
+	cancel       context.CancelFunc
 }
 
-// NewManager creates a new go2rtc process manager.
-func NewManager(binaryPath, configPath string, log zerolog.Logger) *Manager {
+// SetBasicAuth attaches Basic auth credentials so IsHealthy can
+// authenticate against a go2rtc that's been password-protected via
+// GO2RTC_API_USERNAME / GO2RTC_API_PASSWORD.
+func (m *Manager) SetBasicAuth(username, password string) {
+	m.authUsername = username
+	m.authPassword = password
+}
+
+// NewManager creates a new go2rtc process manager. apiPort must
+// match the API listen port in the emitted go2rtc.yaml — the
+// pre-flight port check and health-check URL both use it.
+func NewManager(binaryPath, configPath string, apiPort int, log zerolog.Logger) *Manager {
+	if apiPort <= 0 {
+		apiPort = 1984
+	}
 	return &Manager{
 		log:        log,
 		binaryPath: binaryPath,
 		configPath: configPath,
-		apiURL:     "http://127.0.0.1:1984",
+		apiPort:    apiPort,
+		apiURL:     fmt.Sprintf("http://127.0.0.1:%d", apiPort),
 		ready:      make(chan struct{}),
 	}
 }
@@ -52,11 +69,12 @@ func (m *Manager) Start(ctx context.Context) error {
 		return fmt.Errorf("go2rtc already running")
 	}
 
-	// Pre-flight: if something is already listening on :1984 it's
-	// almost certainly an orphaned go2rtc from a previous run. Fail
-	// fast with a clear error instead of silently talking to the
+	// Pre-flight: if something is already listening on the API port
+	// it's almost certainly an orphaned go2rtc from a previous run.
+	// Fail fast with a clear error instead of silently talking to the
 	// stale instance.
-	if err := checkPortFree(":1984"); err != nil {
+	portAddr := fmt.Sprintf(":%d", m.apiPort)
+	if err := checkPortFree(portAddr); err != nil {
 		return fmt.Errorf("go2rtc port pre-flight: %w "+
 			"(hint: 'pkill go2rtc' to clear an orphan)", err)
 	}
@@ -152,6 +170,9 @@ func (m *Manager) IsHealthy(ctx context.Context) bool {
 	req, err := http.NewRequestWithContext(ctx, "GET", m.apiURL+"/api/streams", nil)
 	if err != nil {
 		return false
+	}
+	if m.authUsername != "" && m.authPassword != "" {
+		req.SetBasicAuth(m.authUsername, m.authPassword)
 	}
 	client := &http.Client{Timeout: 2 * time.Second}
 	resp, err := client.Do(req)

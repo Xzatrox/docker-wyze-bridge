@@ -656,6 +656,9 @@ func setupGo2RTC(ctx context.Context, cfg *config.Config, camMgr *camera.Manager
 		}
 
 		go2rtcAPI := go2rtcmgr.NewAPIClient(cfg.Go2RTCURL, go2rtcLog)
+		// GO2RTC_API_USERNAME/PASSWORD apply to external mode too when
+		// the operator's shared go2rtc is Basic-auth-protected.
+		go2rtcAPI.SetBasicAuth(cfg.Go2RTCAPIUsername, cfg.Go2RTCAPIPassword)
 		// Probe once to fail fast if the URL is unreachable.
 		probeCtx, probeCancel := context.WithTimeout(ctx, 5*time.Second)
 		defer probeCancel()
@@ -685,11 +688,26 @@ func setupGo2RTC(ctx context.Context, cfg *config.Config, camMgr *camera.Manager
 		logLevel = "debug"
 	}
 	configBuilder := go2rtcmgr.NewConfigBuilder(logLevel, cfg.STUNServer, cfg.BridgeIP)
+	configBuilder.SetAPIPort(cfg.Go2RTCAPIPort)
+	configBuilder.SetRTSPPort(cfg.Go2RTCRTSPPort)
+	configBuilder.SetWebRTCPort(cfg.Go2RTCWebRTCPort)
+	configBuilder.SetAPIAuth(cfg.Go2RTCAPIUsername, cfg.Go2RTCAPIPassword)
 
 	if cfg.StreamAuth != "" {
 		entries := go2rtcmgr.ParseStreamAuth(cfg.StreamAuth)
 		configBuilder.SetStreamAuth(entries)
 		log.Info().Int("users", len(entries)).Msg("STREAM_AUTH configured")
+	}
+
+	if extras := go2rtcmgr.ParseExtraStreams(cfg.Go2RTCExtraStreams); len(extras) > 0 {
+		for _, e := range extras {
+			configBuilder.AddExtraStream(e)
+		}
+		log.Info().Int("count", len(extras)).Msg("GO2RTC_EXTRA_STREAMS registered")
+	}
+	if cfg.Go2RTCExtraYAML != "" {
+		configBuilder.AppendRawYAML(cfg.Go2RTCExtraYAML)
+		log.Info().Msg("GO2RTC_EXTRA_YAML appended to go2rtc config")
 	}
 
 	// Pre-register Gwell P2P cameras as empty publish-only slots so
@@ -711,7 +729,8 @@ func setupGo2RTC(ctx context.Context, cfg *config.Config, camMgr *camera.Manager
 	}
 
 	go2rtcBinary := findGo2RTCBinary()
-	mgr := go2rtcmgr.NewManager(go2rtcBinary, go2rtcConfigPath, go2rtcLog)
+	mgr := go2rtcmgr.NewManager(go2rtcBinary, go2rtcConfigPath, configBuilder.APIPort(), go2rtcLog)
+	mgr.SetBasicAuth(configBuilder.APIUsername(), configBuilder.APIPassword())
 
 	if err := mgr.Start(ctx); err != nil {
 		log.Fatal().Err(err).Msg("start go2rtc")
@@ -724,6 +743,7 @@ func setupGo2RTC(ctx context.Context, cfg *config.Config, camMgr *camera.Manager
 	}
 
 	go2rtcAPI := go2rtcmgr.NewAPIClient(mgr.APIURL(), go2rtcLog)
+	go2rtcAPI.SetBasicAuth(configBuilder.APIUsername(), configBuilder.APIPassword())
 	return go2rtcAPI, mgr
 }
 
