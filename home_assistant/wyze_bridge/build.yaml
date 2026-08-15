@@ -1,0 +1,14 @@
+# Local build config for the HA add-on. Because config.yaml has no
+# `image:` field, Supervisor builds this add-on locally from the
+# Dockerfile in this folder, using the base image below per arch.
+#
+# The Dockerfile clones + compiles this fork's source, so the built
+# add-on runs THIS repo's code (including the doorbell button-press
+# feature). Override build_args to build a different fork/branch.
+build_from:
+  amd64: ghcr.io/home-assistant/amd64-base:3.21
+  aarch64: ghcr.io/home-assistant/aarch64-base:3.21
+args:
+  BUILD_REPO: https://github.com/Xzatrox/docker-wyze-bridge
+  BUILD_REF: main
+  GO2RTC_VERSION: 1.9.14

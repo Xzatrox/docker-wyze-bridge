@@ -15,7 +15,7 @@ Stream your Wyze cameras locally via WebRTC, RTSP, and HLS — no cloud required
 4. Start the add-on
 5. Open the WebUI from the sidebar
 
-The Configuration tab is grouped into collapsible sections: **wyze**, **bridge**, **camera**, **snapshot**, **record**, **mqtt**, **filter**, **location**, **webhooks**, **gwell**, **debug**. Anything beyond the fields above is optional — click "Show unused optional configuration options" to expose the rest.
+The Configuration tab is grouped into collapsible sections: **wyze**, **bridge**, **camera**, **snapshot**, **record**, **mqtt**, **filter**, **location**, **events**, **webhooks**, **gwell**, **go2rtc**, **models**, **debug**. Anything beyond the fields above is optional — click "Show unused optional configuration options" to expose the rest.
 
 ## MQTT Auto-Detection
 
@@ -70,9 +70,42 @@ Camera names are matched case-insensitively; spaces become underscores. Only let
 
 Fill **location.latitude** and **location.longitude** to have the bridge capture an extra snapshot at civil sunrise and sunset.
 
+## Doorbell Button-Press & Motion Events
+
+The bridge can poll Wyze's cloud event API to surface **doorbell
+button-press (ring)** and **motion** events. This is separate from live
+streaming — it works even when a camera's live feed is unavailable.
+
+Under the **events** section:
+
+- **motion_api** — poll interval as a duration (`1500ms`, `2s`, `1m`).
+  Empty or `0` disables event polling (default off). Set this to turn
+  the feature on.
+- **recent_window** — how recent an event must be to be acted on
+  (default `30s`). Prevents replaying a backlog of old events when the
+  add-on starts.
+
+When enabled, on each event the bridge:
+
+- **Doorbell ring** → publishes to a Home Assistant **`event` entity**
+  (`event.<camera>_button`, device-class `doorbell`) **and** exposes a
+  **device trigger** so the ring shows up in the automation UI as
+  *"<Camera> — pressed"*. Also fires a `button_press` webhook and logs
+  it on the `/metrics` page.
+- **Motion** → publishes a momentary `motion` MQTT message and fires a
+  `motion` webhook.
+
+The doorbell entities are only created for doorbell models
+(`WYZEDB3`, `HL_DB2`, and the Doorbell Pro/Duo lineage). MQTT must be
+configured for the entities + device trigger to appear.
+
+**Example automation** (via the device trigger, selectable in the UI):
+create an automation, add trigger → **Device** → your doorbell →
+*"pressed"*. Or use a state trigger on `event.<camera>_button`.
+
 ## Webhooks
 
-Add entries to **webhooks.urls** (the UI gives a "+" Add button per URL). The bridge POSTs JSON to each URL on every camera state change (offline → discovering → connecting → streaming → error). HA validates each entry as a URL.
+Add entries to **webhooks.urls** (the UI gives a "+" Add button per URL). The bridge POSTs JSON to each URL on every camera state change (offline → discovering → connecting → streaming → error), and — when event polling is enabled (see **events** above) — on `button_press` and `motion` events. HA validates each entry as a URL.
 
 ## Gwell Cameras (OG, Doorbell Pro, Doorbell Duo)
 

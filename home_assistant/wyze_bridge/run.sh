@@ -90,6 +90,10 @@ export_array '.snapshot.cameras' SNAPSHOT_CAMERAS
 export_opt 'location.latitude'  LATITUDE
 export_opt 'location.longitude' LONGITUDE
 
+# ── Events (motion + doorbell button-press cloud polling) ───────────────────
+export_opt 'events.motion_api'     MOTION_API
+export_opt 'events.recent_window'  EVENT_RECENT_WINDOW
+
 # ── Webhooks + Gwell + Debug ────────────────────────────────────────────────
 export_array '.webhooks.urls'        WEBHOOK_URLS
 export_opt 'gwell.enabled'           GWELL_ENABLED
