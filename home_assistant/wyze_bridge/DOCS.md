@@ -103,6 +103,42 @@ configured for the entities + device trigger to appear.
 create an automation, add trigger → **Device** → your doorbell →
 *"pressed"*. Or use a state trigger on `event.<camera>_button`.
 
+### Ready-to-import dashboard card
+
+The add-on writes a full Lovelace dashboard to
+`/config/wyze_bridge_dashboard.yaml` at startup (doorbell cameras get a
+button-press card automatically). To add just a **single doorbell card**
+to an existing dashboard, open the dashboard → **Edit → Add Card →
+Manual**, and paste this (replace `front_doorbell` /
+`wyze_<mac>` with your doorbell's entity names — check
+**Settings → Devices → your doorbell**):
+
+```yaml
+type: picture-glance
+title: Front Doorbell
+camera_image: camera.wyze_aabbccddeeff
+entities:
+  - entity: event.wyze_aabbccddeeff_button
+    icon: mdi:doorbell
+  - entity: switch.wyze_aabbccddeeff_audio
+  - entity: select.wyze_aabbccddeeff_quality
+```
+
+Or a compact entities card that shows the **last ring time** and a live
+view link:
+
+```yaml
+type: entities
+title: Front Doorbell
+show_header_toggle: false
+entities:
+  - entity: event.wyze_aabbccddeeff_button
+    name: Last Ring
+    icon: mdi:doorbell
+  - entity: camera.wyze_aabbccddeeff
+    name: Live View
+```
+
 ## Webhooks
 
 Add entries to **webhooks.urls** (the UI gives a "+" Add button per URL). The bridge POSTs JSON to each URL on every camera state change (offline → discovering → connecting → streaming → error), and — when event polling is enabled (see **events** above) — on `button_press` and `motion` events. HA validates each entry as a URL.

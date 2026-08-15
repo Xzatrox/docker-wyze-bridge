@@ -5,6 +5,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/IDisposable/docker-wyze-bridge/internal/camera"
+	"github.com/IDisposable/docker-wyze-bridge/internal/wyzeapi"
 )
 
 // TestHandleDashboardYAML_Smoke renders the auto-generated Lovelace
@@ -37,6 +40,48 @@ func TestHandleDashboardYAML_Smoke(t *testing.T) {
 	}
 	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/yaml") {
 		t.Errorf("content-type = %q, want application/yaml", ct)
+	}
+}
+
+// TestHandleDashboardYAML_DoorbellCard verifies that a doorbell
+// camera gets the button `event` entity on its picture-glance plus a
+// dedicated doorbell entities card, while a non-doorbell camera does
+// not.
+func TestHandleDashboardYAML_DoorbellCard(t *testing.T) {
+	srv, _ := testServer(t)
+
+	doorbell := camera.NewCamera(wyzeapi.CameraInfo{
+		Name: "front_doorbell", Nickname: "Front Doorbell", Model: "HL_DB2", MAC: "AABBCCDDEEFF",
+	}, "hd", true, false)
+	srv.camMgr.InjectCamera("front_doorbell", doorbell)
+
+	plain := camera.NewCamera(wyzeapi.CameraInfo{
+		Name: "backyard", Nickname: "Backyard", Model: "WYZE_CAKP2JFUS", MAC: "112233445566",
+	}, "hd", true, false)
+	srv.camMgr.InjectCamera("backyard", plain)
+
+	req := httptest.NewRequest("GET", "/dashboard.yaml", nil)
+	w := httptest.NewRecorder()
+	srv.handleDashboardYAML(w, req)
+
+	body := w.Body.String()
+
+	// Doorbell entity + dedicated card must be present.
+	mustHave := []string{
+		"event.wyze_aabbccddeeff_button",
+		"Front Doorbell Doorbell",
+		"name: Last Ring",
+		"camera.wyze_aabbccddeeff",
+	}
+	for _, want := range mustHave {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q in dashboard yaml\n--- body ---\n%s", want, body)
+		}
+	}
+
+	// The non-doorbell camera must NOT get a button event entity.
+	if strings.Contains(body, "event.wyze_112233445566_button") {
+		t.Error("non-doorbell camera should not have a button event entity")
 	}
 }
 

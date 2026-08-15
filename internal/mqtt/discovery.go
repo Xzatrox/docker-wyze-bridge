@@ -253,8 +253,13 @@ func (c *Client) PublishDiscovery(cam *camera.Camera) {
 	// fires an event trigger each time (unlike a retained sensor).
 	if info.IsDoorbell() {
 		c.publishDiscoveryConfig(fmt.Sprintf("%s/event/%s_button/config", c.dtopic, mac), map[string]interface{}{
-			"name":         info.Nickname + " Button",
-			"unique_id":    "wyze_" + mac + "_button",
+			"name":      info.Nickname + " Button",
+			"unique_id": "wyze_" + mac + "_button",
+			// object_id makes HA derive a deterministic entity_id
+			// (event.wyze_<mac>_button) so the generated dashboard card
+			// and docs snippets reference a stable name instead of one
+			// slugified from the nickname.
+			"object_id":    "wyze_" + mac + "_button",
 			"state_topic":  fmt.Sprintf("%s/%s/event/button", c.topic, name),
 			"event_types":  []string{"pressed"},
 			"device_class": "doorbell",

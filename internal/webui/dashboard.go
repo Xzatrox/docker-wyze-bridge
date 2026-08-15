@@ -70,6 +70,27 @@ func (s *Server) handleDashboardYAML(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(&b, "            icon: mdi:record-rec")
 		fmt.Fprintf(&b, "          - entity: switch.%s_audio\n", entityBase)
 		fmt.Fprintf(&b, "          - entity: select.%s_quality\n", entityBase)
+		// Doorbell cameras also expose a button-press `event` entity;
+		// surface it on the picture-glance so the ring is visible.
+		if info.IsDoorbell() {
+			fmt.Fprintf(&b, "          - entity: event.%s_button\n", entityBase)
+			fmt.Fprintln(&b, "            icon: mdi:doorbell")
+		}
+
+		// Dedicated doorbell card: last-ring timestamp + a big
+		// tap-to-view button, wired to the same button event entity.
+		// Only doorbell-lineage models get this.
+		if info.IsDoorbell() {
+			fmt.Fprintln(&b, "      - type: entities")
+			fmt.Fprintf(&b, "        title: %s\n", yamlQuote(nick+" Doorbell"))
+			fmt.Fprintln(&b, "        show_header_toggle: false")
+			fmt.Fprintln(&b, "        entities:")
+			fmt.Fprintf(&b, "          - entity: event.%s_button\n", entityBase)
+			fmt.Fprintln(&b, "            name: Last Ring")
+			fmt.Fprintln(&b, "            icon: mdi:doorbell")
+			fmt.Fprintf(&b, "          - entity: camera.%s\n", entityBase)
+			fmt.Fprintln(&b, "            name: Live View")
+		}
 	}
 
 	// Optional issues-log card — shows up regardless of whether there
