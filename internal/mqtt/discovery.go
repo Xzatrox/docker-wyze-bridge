@@ -246,6 +246,38 @@ func (c *Client) PublishDiscovery(cam *camera.Camera) {
 		"payload_not_available": "disconnected",
 		"device":                device,
 	})
+
+	// Doorbell button-press: HA `event` entity. Only doorbell-lineage
+	// cameras get this. The bridge publishes JSON {"event_type":"pressed"}
+	// to the state topic when the cloud event poller sees a ring; HA
+	// fires an event trigger each time (unlike a retained sensor).
+	if info.IsDoorbell() {
+		c.publishDiscoveryConfig(fmt.Sprintf("%s/event/%s_button/config", c.dtopic, mac), map[string]interface{}{
+			"name":         info.Nickname + " Button",
+			"unique_id":    "wyze_" + mac + "_button",
+			"state_topic":  fmt.Sprintf("%s/%s/event/button", c.topic, name),
+			"event_types":  []string{"pressed"},
+			"device_class": "doorbell",
+			"device":       device,
+		})
+
+		// Device trigger: makes the ring selectable in HA's automation
+		// UI as "<Nickname> — pressed" (a nicer UX than a raw state
+		// trigger on the event entity). Uses the MQTT device_automation
+		// platform; HA matches `payload` against messages on `topic`.
+		// The bridge publishes {"event_type":"pressed"} on the same
+		// event/button topic, so we match with a value_template that
+		// extracts event_type.
+		c.publishDiscoveryConfig(fmt.Sprintf("%s/device_automation/%s_button_pressed/config", c.dtopic, mac), map[string]interface{}{
+			"automation_type": "trigger",
+			"type":            "button_short_press",
+			"subtype":         "button",
+			"topic":           fmt.Sprintf("%s/%s/event/button", c.topic, name),
+			"payload":         "pressed",
+			"value_template":  "{{ value_json.event_type }}",
+			"device":          device,
+		})
+	}
 }
 
 // haDeviceFromInfo builds the HA device block from a pre-captured
@@ -287,6 +319,8 @@ func (c *Client) RemoveDiscovery(mac string) {
 		{"switch", "_hor_flip"},
 		{"switch", "_ver_flip"},
 		{"switch", "_recording"},
+		{"event", "_button"},
+		{"device_automation", "_button_pressed"},
 	}
 	for _, e := range entities {
 		c.publish(fmt.Sprintf("%s/%s/%s%s/config", c.dtopic, e.component, mac, e.suffix), "", true)

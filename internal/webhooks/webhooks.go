@@ -18,6 +18,8 @@ const (
 	EventCameraOffline = "camera_offline"
 	EventCameraError   = "camera_error"
 	EventSnapshotReady = "snapshot_ready"
+	EventButtonPress   = "button_press"
+	EventMotion        = "motion"
 )
 
 // Payload is the JSON body sent to webhook URLs.

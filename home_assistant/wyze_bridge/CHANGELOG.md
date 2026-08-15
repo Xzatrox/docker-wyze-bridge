@@ -32,6 +32,29 @@ go2rtc's ports, its API auth, and the stream set it serves.
 Internal WebUI URL generation (RTSP-copy button, WebRTC copy) now
 uses the configured ports instead of hard-coded 8554 / 1984.
 
+**Doorbell button-press (ring) events.** Restores the cloud
+event-polling path (dropped in the Go rewrite) and adds explicit
+doorbell button-press detection. When a doorbell rings, the bridge
+now surfaces it over MQTT, webhooks, and the `/metrics` event log.
+
+- New env var `MOTION_API` (duration, e.g. `1500ms`; `0`/unset
+  disables). Enables the `internal/events` poller that calls Wyze's
+  `get_event_list`, dedupes by `event_id`, and classifies each event
+  as motion or button-press via the event tag/value.
+- New env var `EVENT_RECENT_WINDOW` (default `30s`) bounds how old an
+  event may be and still be acted on, so a cold start doesn't replay a
+  stale backlog.
+- MQTT: doorbell cameras (`WYZEDB3`, `HL_DB2`, Doorbell Pro lineage)
+  get a Home Assistant **`event` entity** (`event.<cam>_button`,
+  `device_class: doorbell`, `event_types: [pressed]`) plus a **device
+  trigger** so the ring is selectable in the HA automation UI as
+  "<Nickname> — pressed".
+- Button-press also fires a `button_press` webhook and records a
+  `button_press` entry in the `/metrics` event log; motion events fire
+  a `motion` webhook + momentary `…/motion` MQTT topic.
+- New package `internal/events` with unit tests for classification,
+  dedupe, stale-window filtering, and camera lookup.
+
 ## 4.5.0
 
 Runtime **TUTK → WebRTC auto-fallback** for cameras Wyze crippled

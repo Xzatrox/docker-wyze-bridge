@@ -16,6 +16,7 @@ import (
 
 	"github.com/IDisposable/docker-wyze-bridge/internal/camera"
 	"github.com/IDisposable/docker-wyze-bridge/internal/config"
+	"github.com/IDisposable/docker-wyze-bridge/internal/events"
 	"github.com/IDisposable/docker-wyze-bridge/internal/go2rtcmgr"
 	"github.com/IDisposable/docker-wyze-bridge/internal/issues"
 	"github.com/IDisposable/docker-wyze-bridge/internal/mqtt"
@@ -27,7 +28,7 @@ import (
 )
 
 // Version is set at build time via ldflags.
-var Version = "4.0-beta"
+var Version = "4.6.0"
 
 func main() {
 	// Load configuration
@@ -252,6 +253,7 @@ func main() {
 
 	// Start all background goroutines. The WebUI listener is already running
 	go camMgr.RunDiscoveryLoop(ctx)
+	startEventPoller(ctx, cfg, camMgr, mqttClient, webhookClient, webServer, apiClient)
 	go snapMgr.Run(ctx)
 	go snapPruner.Run(ctx)
 	go recMgr.RunPruner(ctx)
@@ -420,6 +422,82 @@ func setupWebhooks(cfg *config.Config) *webhooks.Client {
 	}, whLog)
 	log.Info().Int("urls", len(webhookClient.URLs())).Msg("webhooks configured")
 	return webhookClient
+}
+
+// startEventPoller wires and launches the cloud event poller when
+// MOTION_API (EventApiInterval) is set. It classifies each Wyze cloud
+// event as motion or a doorbell button-press and fans it out to MQTT
+// (HA event entity + motion topic), webhooks, and the /metrics log.
+func startEventPoller(ctx context.Context, cfg *config.Config, camMgr *camera.Manager, mqttClient *mqtt.Client, webhookClient *webhooks.Client, webServer *webui.Server, apiClient *wyzeapi.Client) {
+	if cfg.EventApiInterval <= 0 {
+		return
+	}
+
+	evLog := log.With().Str("c", "events").Logger()
+
+	// lookup resolves a device MAC to the bridge's normalized camera
+	// name + info. Wyze events report device_mac (v2) or device_id (v4);
+	// both match CameraInfo.MAC for the cameras we track.
+	lookup := func(mac string) (string, wyzeapi.CameraInfo, bool) {
+		for _, cam := range camMgr.Cameras() {
+			info := cam.GetInfo()
+			if info.MAC == mac {
+				return cam.Name(), info, true
+			}
+		}
+		return "", wyzeapi.CameraInfo{}, false
+	}
+
+	sink := events.Sink{
+		OnButtonPress: func(ev events.Event, camName string) {
+			msg := "doorbell button pressed"
+			evLog.Info().Str("cam", camName).Msg(msg)
+			if l := webServer.Events(); l != nil {
+				l.Record(webui.Event{Kind: "button_press", Camera: camName, Message: "pressed"})
+			}
+			if mqttClient != nil {
+				mqttClient.PublishButtonPress(camName)
+			}
+			if webhookClient != nil {
+				webhookClient.Send(ctx, webhooks.EventButtonPress, camName, map[string]interface{}{
+					"event_id":  ev.ID,
+					"timestamp": ev.TS.UTC(),
+					"thumbnail": ev.Thumbnail,
+				})
+			}
+		},
+		OnMotion: func(ev events.Event, camName string) {
+			evLog.Debug().Str("cam", camName).Msg("motion event")
+			if l := webServer.Events(); l != nil {
+				l.Record(webui.Event{Kind: "motion", Camera: camName, Message: "motion detected"})
+			}
+			if mqttClient != nil {
+				mqttClient.PublishMotion(camName)
+			}
+			if webhookClient != nil {
+				webhookClient.Send(ctx, webhooks.EventMotion, camName, map[string]interface{}{
+					"event_id":  ev.ID,
+					"timestamp": ev.TS.UTC(),
+					"thumbnail": ev.Thumbnail,
+				})
+			}
+		},
+	}
+
+	poller := events.NewPoller(apiClient, lookup, sink, cfg.EventApiInterval, cfg.EventApiRecentWindow, evLog)
+
+	// macs returns the MACs to query each tick: all currently tracked
+	// cameras (poller-side classification handles doorbell vs motion).
+	macs := func() []string {
+		cams := camMgr.Cameras()
+		out := make([]string, 0, len(cams))
+		for _, cam := range cams {
+			out = append(out, cam.GetInfo().MAC)
+		}
+		return out
+	}
+
+	go poller.Run(ctx, macs)
 }
 
 func wireCameraStateChanges(ctx context.Context, cfg *config.Config, camMgr *camera.Manager, webServer *webui.Server, mqttClient *mqtt.Client, webhookClient *webhooks.Client, apiClient *wyzeapi.Client, recMgr *recording.Manager, state *wyzeapi.StateFile) {

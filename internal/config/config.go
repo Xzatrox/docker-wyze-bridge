@@ -132,6 +132,14 @@ type Config struct {
 
 	// Refresh interval for Wyze API camera list
 	RefreshInterval time.Duration
+
+	// Cloud event polling. EventApiInterval > 0 enables the poller
+	// that fetches get_event_list and surfaces motion + doorbell
+	// button-press events over MQTT / webhooks / the metrics log.
+	// 0 (default) disables polling. EventApiRecentWindow bounds how
+	// old an event may be and still be acted on (default 30s).
+	EventApiInterval     time.Duration
+	EventApiRecentWindow time.Duration
 }
 
 // CamOverride holds per-camera setting overrides.
@@ -259,6 +267,11 @@ func Load() (*Config, error) {
 		// Internals
 		CamOverrides:    make(map[string]CamOverride),
 		RefreshInterval: envDuration("REFRESH_INTERVAL", 30*time.Minute),
+
+		// Cloud event polling (motion + doorbell button-press).
+		// MOTION_API accepts a duration (e.g. "1500ms", "2s"); 0 = off.
+		EventApiInterval:     envDuration("MOTION_API", 0),
+		EventApiRecentWindow: envDuration("EVENT_RECENT_WINDOW", 30*time.Second),
 	}
 
 	// Derive default BRIDGE_PASSWORD from WYZE_EMAIL if not set

@@ -59,6 +59,21 @@ func (c *Client) PublishThumbnail(camName string, jpeg []byte) {
 	c.publishBytes(fmt.Sprintf("%s/%s/thumbnail", c.topic, camName), jpeg, true)
 }
 
+// PublishButtonPress publishes a doorbell button-press to the camera's
+// HA `event` entity state topic. The payload is JSON {"event_type":
+// "pressed"}; HA fires an event trigger on each message. Not retained
+// — a ring is a momentary event, not a state to restore on restart.
+func (c *Client) PublishButtonPress(camName string) {
+	c.publish(fmt.Sprintf("%s/%s/event/button", c.topic, camName), `{"event_type":"pressed"}`, false)
+}
+
+// PublishMotion publishes a motion event to the camera's motion topic
+// as a momentary "1" (not retained). Kept lightweight; the primary
+// motion signal remains the camera's own detection settings.
+func (c *Client) PublishMotion(camName string) {
+	c.publish(fmt.Sprintf("%s/%s/motion", c.topic, camName), "1", false)
+}
+
 // PublishBridgeState publishes the bridge online/offline state.
 func (c *Client) PublishBridgeState(online bool) {
 	state := "offline"

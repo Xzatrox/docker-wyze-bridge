@@ -77,6 +77,90 @@ func TestDiscoveryConfigJSON(t *testing.T) {
 	}
 }
 
+func TestDoorbellButtonGating(t *testing.T) {
+	// The button event entity + device trigger are only for doorbells.
+	doorbell := camera.NewCamera(wyzeapi.CameraInfo{
+		Name: "front_doorbell", Nickname: "Front Doorbell", Model: "HL_DB2", MAC: "AABBCCDDEEFF",
+	}, "hd", true, false)
+	if !doorbell.Info.IsDoorbell() {
+		t.Fatal("HL_DB2 should report IsDoorbell()=true")
+	}
+
+	notDoorbell := camera.NewCamera(wyzeapi.CameraInfo{
+		Name: "backyard", Nickname: "Backyard", Model: "WYZE_CAKP2JFUS", MAC: "112233445566",
+	}, "hd", true, false)
+	if notDoorbell.Info.IsDoorbell() {
+		t.Error("WYZE_CAKP2JFUS should report IsDoorbell()=false")
+	}
+}
+
+func TestDeviceTriggerDiscoveryShape(t *testing.T) {
+	cam := camera.NewCamera(wyzeapi.CameraInfo{
+		Name: "front_doorbell", Nickname: "Front Doorbell", Model: "HL_DB2", MAC: "AABBCCDDEEFF",
+	}, "hd", true, false)
+	device := haDevice(cam)
+
+	// Mirrors the device_automation config emitted in PublishDiscovery.
+	config := map[string]interface{}{
+		"automation_type": "trigger",
+		"type":            "button_short_press",
+		"subtype":         "button",
+		"topic":           "wyzebridge/front_doorbell/event/button",
+		"payload":         "pressed",
+		"value_template":  "{{ value_json.event_type }}",
+		"device":          device,
+	}
+
+	data, err := json.Marshal(config)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if parsed["automation_type"] != "trigger" {
+		t.Errorf("automation_type = %v, want trigger", parsed["automation_type"])
+	}
+	if parsed["payload"] != "pressed" {
+		t.Errorf("payload = %v, want pressed", parsed["payload"])
+	}
+	if parsed["topic"] != "wyzebridge/front_doorbell/event/button" {
+		t.Errorf("topic = %v", parsed["topic"])
+	}
+}
+
+func TestEventEntityDiscoveryShape(t *testing.T) {
+	cam := camera.NewCamera(wyzeapi.CameraInfo{
+		Name: "front_doorbell", Nickname: "Front Doorbell", Model: "HL_DB2", MAC: "AABBCCDDEEFF",
+	}, "hd", true, false)
+	device := haDevice(cam)
+
+	config := map[string]interface{}{
+		"name":         cam.Info.Nickname + " Button",
+		"unique_id":    "wyze_" + cam.Info.MAC + "_button",
+		"state_topic":  "wyzebridge/front_doorbell/event/button",
+		"event_types":  []string{"pressed"},
+		"device_class": "doorbell",
+		"device":       device,
+	}
+	data, err := json.Marshal(config)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	types, ok := parsed["event_types"].([]interface{})
+	if !ok || len(types) != 1 || types[0] != "pressed" {
+		t.Errorf("event_types = %v", parsed["event_types"])
+	}
+	if parsed["device_class"] != "doorbell" {
+		t.Errorf("device_class = %v", parsed["device_class"])
+	}
+}
+
 func TestQualitySelectDiscovery(t *testing.T) {
 	cam := camera.NewCamera(wyzeapi.CameraInfo{
 		Name:     "backyard",
