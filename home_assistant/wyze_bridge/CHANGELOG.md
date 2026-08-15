@@ -1,5 +1,26 @@
 # Changelog
 
+## 4.6.1
+
+Local-build fix for the HA add-on + doorbell dashboard card.
+
+- **Fix add-on install (404):** the stable add-on pulled a prebuilt
+  `ghcr.io/idisposable/...-homeassistant:<version>` image that didn't
+  exist and wouldn't contain this fork's code. Removed `image:` and
+  added `build.yaml`; the Dockerfile now compiles this fork's source
+  (go2rtc + wyze-bridge + gwell-proxy) locally, so the add-on runs
+  THIS repo's code.
+- **Doorbell/motion events exposed in the add-on UI:** new `events`
+  config section (`motion_api`, `recent_window`) mapped to
+  `MOTION_API` / `EVENT_RECENT_WINDOW`.
+- **Doorbell dashboard card:** the auto-generated Lovelace dashboard
+  (`/dashboard.yaml`) now gives doorbell cameras a button-press
+  entity on the picture-glance plus a dedicated "Last Ring / Live
+  View" card. Ready-to-paste snippets added to DOCS.
+- **Stable entity_id:** the button `event` entity now sets `object_id`
+  so HA derives `event.wyze_<mac>_button` deterministically.
+- DOCS.md documents the Doorbell Button-Press & Motion Events section.
+
 ## 4.6.0
 
 **go2rtc customization** — three long-standing issues that all
