@@ -11,6 +11,7 @@ package events
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -194,6 +195,7 @@ type Poller struct {
 	maxSeen       int
 	lastTS        int64     // epoch ms of newest processed event; API begin_time
 	lastHeartbeat time.Time // last time an INFO poll heartbeat was logged
+	rawDumpsLeft  int       // remaining full raw-event dumps to log (diagnostic)
 }
 
 // NewPoller constructs an event poller. interval<=0 disables it (the
@@ -211,6 +213,7 @@ func NewPoller(api *wyzeapi.Client, lookup CameraLookup, sink Sink, interval, re
 		log:          log,
 		seen:         make(map[string]struct{}),
 		maxSeen:      256,
+		rawDumpsLeft: 10,
 	}
 }
 
@@ -316,6 +319,17 @@ func (p *Poller) processEvents(raw []map[string]interface{}, now time.Time) {
 			Str("kind", kind.String()).
 			Float64("age_s", now.Sub(ts).Seconds()).
 			Msg("new cloud event")
+
+		// Full raw-event dump (INFO, first N events only) so we can see
+		// every field the firmware sends — a ring may be encoded in a
+		// nested field rather than event_value. Bounded so it doesn't
+		// spam the log indefinitely.
+		if p.rawDumpsLeft > 0 {
+			p.rawDumpsLeft--
+			if b, err := json.Marshal(r); err == nil {
+				p.log.Info().RawJSON("raw_event", b).Msg("raw cloud event dump")
+			}
+		}
 
 		// Skip stale events (older than the recent window) so we don't
 		// fire chimes/automations for a backlog on startup.
