@@ -1,5 +1,23 @@
 # Changelog
 
+## 4.6.3
+
+**Fix: no events were ever delivered.** The `get_event_list` call was
+missing the `nonce` field that the v4 signed endpoint requires (its
+sibling v4 call `get_streams` includes it). Without it the request was
+rejected, so neither motion nor doorbell events ever arrived — and the
+failure was logged only at debug level, so it was invisible.
+
+- Add `nonce` to the `get_event_list` payload.
+- Log a `get_event_list` failure at **warn** (not debug) so a broken
+  event pipeline is visible at the default log level.
+- Add debug logging of each received event's `event_id` /
+  `event_value` / classified kind / age, and log when an event is
+  dropped as stale or for an untracked MAC — so the pipeline can be
+  diagnosed from the logs.
+- Widen default `EVENT_RECENT_WINDOW` 30s → 120s (only relevant once
+  events actually arrive).
+
 ## 4.6.2
 
 **Fix doorbell button-press classification.** The event classifier

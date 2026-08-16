@@ -199,7 +199,7 @@ type Poller struct {
 // caller should not start it). recentWindow defaults to 30s.
 func NewPoller(api *wyzeapi.Client, lookup CameraLookup, sink Sink, interval, recentWindow time.Duration, log zerolog.Logger) *Poller {
 	if recentWindow <= 0 {
-		recentWindow = 30 * time.Second
+		recentWindow = 120 * time.Second
 	}
 	return &Poller{
 		api:          api,
@@ -253,8 +253,14 @@ func (p *Poller) poll(macs []string) {
 
 	raw, err := p.api.GetEventList(macs, begin, end)
 	if err != nil {
-		p.log.Debug().Err(err).Msg("get_event_list failed")
+		// Surface at warn: a persistent failure here means NO events
+		// (motion or doorbell) will ever be delivered, so it must be
+		// visible at the default log level, not hidden at debug.
+		p.log.Warn().Err(err).Msg("get_event_list failed; no events will be delivered until this recovers")
 		return
+	}
+	if len(raw) > 0 {
+		p.log.Debug().Int("count", len(raw)).Msg("get_event_list returned events")
 	}
 	p.processEvents(raw, time.Now())
 }
@@ -280,9 +286,27 @@ func (p *Poller) processEvents(raw []map[string]interface{}, now time.Time) {
 			}
 		}
 
+		kind := classify(r)
+
+		// Diagnostic: log every event we receive with its raw
+		// alarm-type so operators can confirm the classifier matches
+		// their firmware. Visible at debug level.
+		p.log.Debug().
+			Str("event_id", id).
+			Interface("event_value", r["event_value"]).
+			Interface("event_tag_list", r["event_tag_list"]).
+			Str("kind", kind.String()).
+			Float64("age_s", now.Sub(ts).Seconds()).
+			Msg("cloud event received")
+
 		// Skip stale events (older than the recent window) so we don't
 		// fire chimes/automations for a backlog on startup.
 		if ts.IsZero() || now.Sub(ts) > p.recentWindow {
+			p.log.Debug().
+				Str("event_id", id).
+				Float64("age_s", now.Sub(ts).Seconds()).
+				Dur("window", p.recentWindow).
+				Msg("event skipped: older than recent window")
 			continue
 		}
 
@@ -292,13 +316,14 @@ func (p *Poller) processEvents(raw []map[string]interface{}, now time.Time) {
 		}
 		name, _, ok := p.lookup(mac)
 		if !ok {
+			p.log.Debug().Str("mac", mac).Msg("event skipped: MAC not a tracked camera")
 			continue
 		}
 
 		ev := Event{
 			ID:        id,
 			MAC:       mac,
-			Kind:      classify(r),
+			Kind:      kind,
 			TS:        ts,
 			Thumbnail: firstImageThumbnail(r),
 		}

@@ -2,6 +2,7 @@ package wyzeapi
 
 import (
 	"fmt"
+	"time"
 )
 
 // RunAction sends a run_action command to a camera via the Wyze cloud API.
@@ -49,6 +50,10 @@ func (c *Client) GetEventList(macs []string, beginTimeMS, endTimeMS int64) ([]ma
 	payload["device_id_list"] = uniqueMACs
 	payload["event_value_list"] = []interface{}{}
 	payload["event_tag_list"] = []interface{}{}
+	// nonce is required by the v4 signed endpoint (the sibling
+	// get_streams v4 call includes it too). Without it the request is
+	// rejected and no events are ever returned.
+	payload["nonce"] = time.Now().UnixMilli()
 
 	sorted := sortDict(payload)
 	headers := c.signPayloadHeaders("9319141212m2ik", sorted)

@@ -271,7 +271,7 @@ func Load() (*Config, error) {
 		// Cloud event polling (motion + doorbell button-press).
 		// MOTION_API accepts a duration (e.g. "1500ms", "2s"); 0 = off.
 		EventApiInterval:     envDuration("MOTION_API", 0),
-		EventApiRecentWindow: envDuration("EVENT_RECENT_WINDOW", 30*time.Second),
+		EventApiRecentWindow: envDuration("EVENT_RECENT_WINDOW", 120*time.Second),
 	}
 
 	// Derive default BRIDGE_PASSWORD from WYZE_EMAIL if not set
