@@ -1,5 +1,30 @@
 # Changelog
 
+## 4.6.8
+
+**Polish: diagnostics + docs after confirming doorbell events and live
+streaming work end-to-end.** No behavior change to the event pipeline —
+button-press and motion continue to work as in 4.6.7.
+
+- main.go: go2rtc's log level now follows the add-on's
+  `debug.log_level`. Setting it to `debug`/`trace` finally surfaces
+  go2rtc's own `wyze: dial ...` and TUTK/DTLS handshake lines, which are
+  the only way to diagnose a stream `discovery timeout`. Previously only
+  the obscure `force_iotc_detail` toggle did this; that flag still works
+  as an override.
+- events.go: stop re-processing an already-seen cloud event on every
+  poll. Wyze keeps returning the same recent event (with a growing
+  `end_time`) for a minute+, which produced ~40 duplicate log lines/sec
+  at debug/trace for a single ring. The poller now advances its query
+  window past seen events and only logs genuinely new ones. Dedupe /
+  dispatch behavior is unchanged; added a regression test.
+- DOCS: documented the two Wyze-side gotchas discovered in testing —
+  (1) `discovery timeout` is caused by the Wyze app/Alexa holding the
+  camera's single P2P session; close them (or make the bridge the sole
+  consumer) to fix it; and (2) Wyze's cloud groups rapid button presses
+  into one event, so you get one notification per ring "session," not
+  per press. Added a Troubleshooting section.
+
 ## 4.6.7
 
 **Fix: HA MQTT camera entity was blank.** The auto-discovered camera

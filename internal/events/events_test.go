@@ -189,9 +189,21 @@ func TestProcessEvents_Dedupe(t *testing.T) {
 	}
 	// Same event id delivered twice across two polls.
 	p.processEvents([]map[string]interface{}{ev}, now)
+	firstTS := p.lastTS
 	p.processEvents([]map[string]interface{}{ev}, now)
 	if count != 1 {
 		t.Errorf("dispatched %d times, want 1 (deduped)", count)
+	}
+	// lastTS must advance to the event timestamp even though the second
+	// delivery was a duplicate; this lets the API query window move
+	// forward so a still-open event does not pin begin_time and force a
+	// perpetual re-fetch (~40 lines/sec) of the same recent event.
+	wantTS := now.Add(-1 * time.Second).UnixMilli()
+	if firstTS != wantTS {
+		t.Errorf("lastTS after first poll = %d, want %d", firstTS, wantTS)
+	}
+	if p.lastTS != wantTS {
+		t.Errorf("lastTS after duplicate poll = %d, want %d (must not regress)", p.lastTS, wantTS)
 	}
 }
 

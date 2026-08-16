@@ -103,6 +103,18 @@ configured for the entities + device trigger to appear.
 create an automation, add trigger → **Device** → your doorbell →
 *"pressed"*. Or use a state trigger on `event.<camera>_button`.
 
+> **Note — one notification per ring "session", not per press.**
+> Wyze's cloud groups several presses that happen close together into a
+> **single event record** (it keeps updating the same `event_id` with a
+> growing `end_time` while the clip is recording). So if someone taps the
+> button several times within ~20–30s, the cloud reports it as **one**
+> event and you get **one** notification. This is a Wyze cloud
+> limitation, not a bridge bug — the bridge dispatches every distinct
+> event the cloud actually emits. The same grouping affects the Wyze app
+> and Alexa routines. True per-press detection would require reading the
+> camera's live control channel, which the cloud event API does not
+> expose.
+
 ### Live video in a card (RTSP)
 
 The auto-discovered MQTT camera entity shows a periodically-refreshed
@@ -184,6 +196,37 @@ Under the **bridge** section:
 | 8888 | TCP | HLS |
 | 8889 | TCP | WebRTC HTTP |
 | 8189 | UDP | WebRTC ICE |
+
+## Troubleshooting
+
+### `wyze: connect failed: discovery timeout` (stream won't start)
+
+Wyze cameras — **doorbells especially** — allow only **one local P2P
+session at a time**. If the **Wyze app** or an **Alexa** "show me the
+front door" session is holding that session, the bridge cannot connect
+and go2rtc logs a repeating `discovery timeout` for that stream, even
+though the camera is fully reachable on the network.
+
+**Fix:** fully close the Wyze app (swipe it away, don't just background
+it) and stop any Alexa live view, wait ~30 seconds for the camera to
+release the slot, then reload the stream. It should connect within a
+second or two.
+
+**Recommended setup:** make the bridge the **sole consumer** of each
+camera and point everything else at the bridge instead of at Wyze:
+
+- Home Assistant: Generic Camera on `rtsp://<BRIDGE_IP>:8554/<name>`
+- Alexa / other viewers: the bridge's RTSP or WebRTC feed
+
+That way the bridge holds the single camera session and fans it out to
+all consumers, eliminating the contention entirely.
+
+### Seeing what go2rtc is doing
+
+The bridge keeps go2rtc quiet (warn-level) by default. To see go2rtc's
+own dial/handshake lines when diagnosing a stream, raise the add-on's
+**debug.log_level** to `debug` (or `trace` for full TUTK detail) — the
+bridge now propagates that level to go2rtc.
 
 ## Support
 

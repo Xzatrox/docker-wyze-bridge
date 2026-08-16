@@ -28,7 +28,7 @@ import (
 )
 
 // Version is set at build time via ldflags.
-var Version = "4.6.7"
+var Version = "4.6.8"
 
 func main() {
 	// Load configuration
@@ -770,8 +770,23 @@ func setupGo2RTC(ctx context.Context, cfg *config.Config, camMgr *camera.Manager
 		log.Warn().Err(err).Msg("initial discovery failed; starting go2rtc without streams")
 	}
 
+	// Derive go2rtc's log level from the bridge's own LOG_LEVEL so that
+	// setting debug.log_level=debug/trace actually surfaces go2rtc's
+	// internals (esp. "wyze: dial ..." and TUTK/DTLS handshake lines),
+	// which are the only way to diagnose stream "discovery timeout".
+	// go2rtc defaults to warn to keep normal operation quiet.
+	// FORCE_IOTC_DETAIL remains a hard override that forces >=debug even
+	// when the bridge log level is higher.
 	logLevel := "warn"
-	if cfg.ForceIOTCDetail {
+	switch {
+	case cfg.LogLevel <= zerolog.TraceLevel:
+		logLevel = "trace"
+	case cfg.LogLevel <= zerolog.DebugLevel:
+		logLevel = "debug"
+	case cfg.LogLevel <= zerolog.InfoLevel:
+		logLevel = "info"
+	}
+	if cfg.ForceIOTCDetail && logLevel != "trace" {
 		logLevel = "debug"
 	}
 	configBuilder := go2rtcmgr.NewConfigBuilder(logLevel, cfg.STUNServer, cfg.BridgeIP)

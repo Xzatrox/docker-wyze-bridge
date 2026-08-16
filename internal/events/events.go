@@ -276,8 +276,22 @@ func (p *Poller) poll(macs []string) {
 			Msg("event poll heartbeat")
 	}
 
-	if len(raw) > 0 {
-		p.log.Debug().Int("count", len(raw)).Msg("get_event_list returned events")
+	// Count how many of the returned events we have not seen yet. The
+	// Wyze API keeps returning the SAME recent event on every poll
+	// (often for a minute+ while its recording stays "open" with
+	// end_time=0), so logging len(raw) every cycle produces ~40
+	// duplicate lines/sec at debug/trace for a single ring. Only log
+	// when there is genuinely new work to report.
+	newCount := 0
+	for _, r := range raw {
+		if id := eventID(r); id != "" {
+			if _, dup := p.seen[id]; !dup {
+				newCount++
+			}
+		}
+	}
+	if newCount > 0 {
+		p.log.Debug().Int("count", newCount).Int("total", len(raw)).Msg("get_event_list returned new events")
 	}
 	p.processEvents(raw, time.Now())
 }
@@ -291,6 +305,20 @@ func (p *Poller) processEvents(raw []map[string]interface{}, now time.Time) {
 		if id == "" {
 			continue
 		}
+		// Advance lastTS from the event timestamp even for events we
+		// have already seen. Wyze keeps returning the same recent
+		// event on every poll; without advancing the query window's
+		// begin_time here, a single ring would keep the window pinned
+		// and force a full re-fetch of that event every 1.5s
+		// indefinitely. Advancing lastTS lets the begin_time move
+		// forward so the closed event drops out of subsequent queries.
+		ts := eventTS(r)
+		if !ts.IsZero() {
+			if ms := ts.UnixMilli(); ms > p.lastTS {
+				p.lastTS = ms
+			}
+		}
+
 		// Already handled this event id — drop quietly (this is the
 		// normal case: the API keeps returning the same recent event
 		// on every poll until a newer one arrives).
@@ -298,13 +326,6 @@ func (p *Poller) processEvents(raw []map[string]interface{}, now time.Time) {
 			continue
 		}
 		p.markSeen(id)
-
-		ts := eventTS(r)
-		if !ts.IsZero() {
-			if ms := ts.UnixMilli(); ms > p.lastTS {
-				p.lastTS = ms
-			}
-		}
 
 		kind := classify(r)
 
