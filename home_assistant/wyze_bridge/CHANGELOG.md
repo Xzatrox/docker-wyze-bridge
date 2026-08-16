@@ -1,5 +1,25 @@
 # Changelog
 
+## 4.6.4
+
+**Make local builds actually pick up new code + verifiable.** The
+add-on Dockerfile clones the source in a Docker layer; without cache
+busting, rebuilds silently reused a stale checkout — so earlier fixes
+(nonce, classifier) may never have run on-device. Also, the version
+was never passed to the build, so the log always said "dev".
+
+- build.yaml now passes `VERSION` (shown at startup) and a `CACHE_BUST`
+  arg that invalidates the git-clone layer each release, forcing a
+  fresh checkout of `main` on every rebuild.
+- Add an INFO "event poll heartbeat" (~every 60s) so operators can
+  confirm from the default log level that the poller is calling the
+  API and how many events it sees — silence is no longer ambiguous.
+- `get_event_list returned events` now logs at INFO (was debug).
+
+If your startup log still shows `"version":"dev"` after updating,
+the rebuild did not pick up new source — uninstall/reinstall the
+add-on or clear the build cache.
+
 ## 4.6.3
 
 **Fix: no events were ever delivered.** The `get_event_list` call was

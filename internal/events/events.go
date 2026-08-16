@@ -189,10 +189,11 @@ type Poller struct {
 	recentWindow time.Duration
 	log          zerolog.Logger
 
-	seen    map[string]struct{}
-	seenBuf []string // insertion order for bounded eviction
-	maxSeen int
-	lastTS  int64 // epoch ms of newest processed event; API begin_time
+	seen          map[string]struct{}
+	seenBuf       []string // insertion order for bounded eviction
+	maxSeen       int
+	lastTS        int64     // epoch ms of newest processed event; API begin_time
+	lastHeartbeat time.Time // last time an INFO poll heartbeat was logged
 }
 
 // NewPoller constructs an event poller. interval<=0 disables it (the
@@ -259,8 +260,21 @@ func (p *Poller) poll(macs []string) {
 		p.log.Warn().Err(err).Msg("get_event_list failed; no events will be delivered until this recovers")
 		return
 	}
+
+	// INFO heartbeat every ~60s so operators can confirm from the
+	// default log level that the poller is actually calling the API
+	// (and how many events it's seeing) instead of silently doing
+	// nothing.
+	if time.Since(p.lastHeartbeat) >= time.Minute {
+		p.lastHeartbeat = time.Now()
+		p.log.Info().
+			Int("cameras", len(macs)).
+			Int("events_this_poll", len(raw)).
+			Msg("event poll heartbeat")
+	}
+
 	if len(raw) > 0 {
-		p.log.Debug().Int("count", len(raw)).Msg("get_event_list returned events")
+		p.log.Info().Int("count", len(raw)).Msg("get_event_list returned events")
 	}
 	p.processEvents(raw, time.Now())
 }

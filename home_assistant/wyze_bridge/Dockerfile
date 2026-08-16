@@ -34,9 +34,15 @@ FROM golang:1.26.4-alpine AS builder
 ARG BUILD_REPO
 ARG BUILD_REF
 ARG VERSION
+# CACHE_BUST changes per release so the git clone layer below is not
+# served from Docker's cache with a stale checkout. Referencing it in
+# an env right before the clone invalidates everything from here down
+# whenever it changes.
+ARG CACHE_BUST=dev
 RUN apk add --no-cache git ca-certificates
 WORKDIR /src
-RUN git clone --depth 1 --branch "${BUILD_REF}" "${BUILD_REPO}" . && \
+RUN echo "cache-bust: ${CACHE_BUST}" && \
+    git clone --depth 1 --branch "${BUILD_REF}" "${BUILD_REPO}" . && \
     go mod download
 # Replace placeholder video-rtc.js with the real one before it's embedded.
 COPY --from=go2rtc-fetch /video-rtc.js ./internal/webui/static/video-rtc.js

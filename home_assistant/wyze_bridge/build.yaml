@@ -12,3 +12,8 @@ args:
   BUILD_REPO: https://github.com/Xzatrox/docker-wyze-bridge
   BUILD_REF: main
   GO2RTC_VERSION: 1.9.14
+  VERSION: "4.6.4"
+  # Bump CACHE_BUST on every release so Docker re-runs the git clone
+  # layer instead of reusing a stale cached checkout. Without this, a
+  # local rebuild silently keeps old source.
+  CACHE_BUST: "4.6.4"
