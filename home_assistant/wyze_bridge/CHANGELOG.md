@@ -1,5 +1,21 @@
 # Changelog
 
+## 4.6.2
+
+**Fix doorbell button-press classification.** The event classifier
+matched the wrong Wyze alarm type, so real doorbell rings were never
+detected (they fell through to motion) and the HA `event` entity never
+updated.
+
+- Correct the ring signal to Wyze `EventAlarmType.DOORBELL_RANG` —
+  `event_value == 10` (confirmed via shauntarves/wyze-sdk). The prior
+  code wrongly used tag `13` (which is actually MOTION) and value `12`
+  (which is FACE).
+- Match the alarm type in the event's `event_value` field first, with
+  `event_tag_list` as a fallback.
+- Tests updated to the correct values (10=ring; 1/6/7/13=motion;
+  12=face → motion).
+
 ## 4.6.1
 
 Local-build fix for the HA add-on + doorbell dashboard card.

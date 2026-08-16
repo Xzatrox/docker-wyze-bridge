@@ -16,33 +16,38 @@ func TestClassify(t *testing.T) {
 		want Kind
 	}{
 		{
-			name: "button press via tag_list string",
-			raw:  map[string]interface{}{"event_tag_list": []interface{}{"13"}},
+			name: "button press via event_value string (10=DOORBELL_RANG)",
+			raw:  map[string]interface{}{"event_value": "10"},
 			want: KindButtonPress,
 		},
 		{
-			name: "button press via tag_list number",
-			raw:  map[string]interface{}{"event_tag_list": []interface{}{float64(13)}},
+			name: "button press via event_value number",
+			raw:  map[string]interface{}{"event_value": float64(10)},
 			want: KindButtonPress,
 		},
 		{
-			name: "button press via event_value alarm type",
+			name: "button press echoed in tag_list",
+			raw:  map[string]interface{}{"event_tag_list": []interface{}{"10"}},
+			want: KindButtonPress,
+		},
+		{
+			name: "motion via event_value 13",
+			raw:  map[string]interface{}{"event_value": float64(13)},
+			want: KindMotion,
+		},
+		{
+			name: "motion via event_value 1",
+			raw:  map[string]interface{}{"event_value": "1"},
+			want: KindMotion,
+		},
+		{
+			name: "face (12) is not a button press",
 			raw:  map[string]interface{}{"event_value": "12"},
-			want: KindButtonPress,
-		},
-		{
-			name: "motion via other tag",
-			raw:  map[string]interface{}{"event_tag_list": []interface{}{"1", "2"}},
 			want: KindMotion,
 		},
 		{
-			name: "motion with no tags",
+			name: "motion with no fields",
 			raw:  map[string]interface{}{},
-			want: KindMotion,
-		},
-		{
-			name: "motion with mixed tags excluding ring",
-			raw:  map[string]interface{}{"event_tag_list": []interface{}{float64(1), float64(7)}},
 			want: KindMotion,
 		},
 	}
@@ -137,7 +142,7 @@ func TestProcessEvents_ButtonPressDispatch(t *testing.T) {
 			"event_id":       "e1",
 			"device_mac":     "AABBCC",
 			"event_ts":       float64(now.Add(-2 * time.Second).UnixMilli()),
-			"event_tag_list": []interface{}{"13"},
+			"event_value":     "10",
 		},
 	}
 	p.processEvents(raw, now)
@@ -180,7 +185,7 @@ func TestProcessEvents_Dedupe(t *testing.T) {
 		"event_id":       "dup",
 		"device_mac":     "AABBCC",
 		"event_ts":       float64(now.Add(-1 * time.Second).UnixMilli()),
-		"event_tag_list": []interface{}{"13"},
+		"event_value":     "10",
 	}
 	// Same event id delivered twice across two polls.
 	p.processEvents([]map[string]interface{}{ev}, now)
@@ -202,7 +207,7 @@ func TestProcessEvents_StaleWindowSkipped(t *testing.T) {
 			"event_id":       "old",
 			"device_mac":     "AABBCC",
 			"event_ts":       float64(now.Add(-90 * time.Second).UnixMilli()),
-			"event_tag_list": []interface{}{"13"},
+			"event_value":     "10",
 		},
 	}
 	p.processEvents(raw, now)
@@ -227,7 +232,7 @@ func TestProcessEvents_UnknownCameraSkipped(t *testing.T) {
 			"event_id":       "e1",
 			"device_mac":     "UNKNOWN",
 			"event_ts":       float64(now.UnixMilli()),
-			"event_tag_list": []interface{}{"13"},
+			"event_value":     "10",
 		},
 	}
 	p.processEvents(raw, now)

@@ -37,16 +37,13 @@ func (k Kind) String() string {
 	}
 }
 
-// wyzeDoorbellPressTag is the event_tag_list value Wyze uses for a
-// doorbell button-press ("ring") event. Motion/AI events use other
-// tag values (person, package, etc.). We match on this tag first and
-// treat everything else as motion.
-const wyzeDoorbellPressTag = "13"
-
-// wyzeDoorbellPressAlarmType mirrors the doorbell-ring value that
-// appears in the event's event_value / alarm-type fields on some
-// firmware where the tag list is empty. Kept as a secondary signal.
-const wyzeDoorbellPressAlarmType = "12"
+// Wyze EventAlarmType values (from com.HLApi.Obj.EventItem, confirmed
+// via shauntarves/wyze-sdk EventAlarmType). The doorbell button-press
+// ("ring") is alarm type 10 (DOORBELL_RANG). For reference, the other
+// types are: SOUND=2, OTHER=3, SMOKE=4, CO=5, DOORBELL_RANG=10,
+// SCENE=11, FACE=12, and MOTION = {1, 6, 7, 13}. The alarm type is
+// carried in the event's `event_value` field.
+const wyzeDoorbellRangAlarmType = "10"
 
 // Event is a normalized, classified Wyze cloud event.
 type Event struct {
@@ -58,21 +55,20 @@ type Event struct {
 }
 
 // classify inspects a raw get_event_list entry and returns whether it
-// is a doorbell button-press. It checks event_tag_list first (the most
-// reliable modern signal), then falls back to event_value. Unknown
-// events are treated as motion by the caller.
+// is a doorbell button-press. The alarm type lives in `event_value`;
+// DOORBELL_RANG (10) is a ring, everything else (motion=1/6/7/13,
+// sound=2, face=12, …) is treated as motion by the caller.
 func classify(raw map[string]interface{}) Kind {
-	// event_tag_list: []interface{} of tag values (numbers or strings).
+	if tagMatches(raw["event_value"], wyzeDoorbellRangAlarmType) {
+		return KindButtonPress
+	}
+	// Some firmware also echoes the alarm type in event_tag_list.
 	if tags, ok := raw["event_tag_list"].([]interface{}); ok {
 		for _, t := range tags {
-			if tagMatches(t, wyzeDoorbellPressTag) {
+			if tagMatches(t, wyzeDoorbellRangAlarmType) {
 				return KindButtonPress
 			}
 		}
-	}
-	// Some firmware surfaces the ring in event_value / alarm-type.
-	if tagMatches(raw["event_value"], wyzeDoorbellPressAlarmType) {
-		return KindButtonPress
 	}
 	return KindMotion
 }
