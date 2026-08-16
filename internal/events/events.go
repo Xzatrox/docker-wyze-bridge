@@ -274,7 +274,7 @@ func (p *Poller) poll(macs []string) {
 	}
 
 	if len(raw) > 0 {
-		p.log.Info().Int("count", len(raw)).Msg("get_event_list returned events")
+		p.log.Debug().Int("count", len(raw)).Msg("get_event_list returned events")
 	}
 	p.processEvents(raw, time.Now())
 }
@@ -288,6 +288,9 @@ func (p *Poller) processEvents(raw []map[string]interface{}, now time.Time) {
 		if id == "" {
 			continue
 		}
+		// Already handled this event id — drop quietly (this is the
+		// normal case: the API keeps returning the same recent event
+		// on every poll until a newer one arrives).
 		if _, dup := p.seen[id]; dup {
 			continue
 		}
@@ -302,21 +305,22 @@ func (p *Poller) processEvents(raw []map[string]interface{}, now time.Time) {
 
 		kind := classify(r)
 
-		// Diagnostic: log every event we receive with its raw
-		// alarm-type so operators can confirm the classifier matches
-		// their firmware. Visible at debug level.
-		p.log.Debug().
+		// First time we see this event: log it at INFO with the raw
+		// alarm-type + age so operators can confirm what their firmware
+		// sends and why it is/ isn't dispatched. This fires once per
+		// unique event id, not on every poll.
+		p.log.Info().
 			Str("event_id", id).
 			Interface("event_value", r["event_value"]).
 			Interface("event_tag_list", r["event_tag_list"]).
 			Str("kind", kind.String()).
 			Float64("age_s", now.Sub(ts).Seconds()).
-			Msg("cloud event received")
+			Msg("new cloud event")
 
 		// Skip stale events (older than the recent window) so we don't
 		// fire chimes/automations for a backlog on startup.
 		if ts.IsZero() || now.Sub(ts) > p.recentWindow {
-			p.log.Debug().
+			p.log.Info().
 				Str("event_id", id).
 				Float64("age_s", now.Sub(ts).Seconds()).
 				Dur("window", p.recentWindow).
@@ -330,7 +334,7 @@ func (p *Poller) processEvents(raw []map[string]interface{}, now time.Time) {
 		}
 		name, _, ok := p.lookup(mac)
 		if !ok {
-			p.log.Debug().Str("mac", mac).Msg("event skipped: MAC not a tracked camera")
+			p.log.Info().Str("mac", mac).Msg("event skipped: MAC not a tracked camera")
 			continue
 		}
 
@@ -341,6 +345,11 @@ func (p *Poller) processEvents(raw []map[string]interface{}, now time.Time) {
 			TS:        ts,
 			Thumbnail: firstImageThumbnail(r),
 		}
+
+		p.log.Info().
+			Str("cam", name).
+			Str("kind", kind.String()).
+			Msg("dispatching event to sinks")
 
 		switch ev.Kind {
 		case KindButtonPress:

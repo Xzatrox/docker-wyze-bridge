@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.6.5
+
+Event-pipeline diagnostics promoted to INFO so the drop reason is
+visible without switching to debug. Each unique event now logs once at
+INFO with its `event_value` / `event_tag_list` / classified kind / age,
+plus an explicit line when it's skipped (stale window or untracked MAC)
+or dispatched to the sinks. The per-poll "get_event_list returned
+events" line is back to debug (it repeated the same event every 1.5s).
+
 ## 4.6.4
 
 **Make local builds actually pick up new code + verifiable.** The
