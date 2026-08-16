@@ -28,7 +28,7 @@ import (
 )
 
 // Version is set at build time via ldflags.
-var Version = "4.6.6"
+var Version = "4.6.7"
 
 func main() {
 	// Load configuration
@@ -236,10 +236,11 @@ func main() {
 		}
 	})
 
-	wireCameraStateChanges(ctx, cfg, camMgr, webServer, mqttClient, webhookClient, apiClient, recMgr, state)
-
 	snapLog := log.With().Str("c", "snapshot").Logger()
 	snapMgr := snapshot.NewManager(cfg, camMgr, go2rtcAPI, snapLog)
+
+	wireCameraStateChanges(ctx, cfg, camMgr, webServer, mqttClient, webhookClient, apiClient, recMgr, state, snapMgr)
+
 	wireSnapshotHandlers(webServer, snapMgr, mqttClient)
 	wireMQTTCommands(ctx, camMgr, recMgr, webServer, mqttClient)
 	webServer.OnDiscoverRequest(func(_ context.Context) {
@@ -500,7 +501,7 @@ func startEventPoller(ctx context.Context, cfg *config.Config, camMgr *camera.Ma
 	go poller.Run(ctx, macs)
 }
 
-func wireCameraStateChanges(ctx context.Context, cfg *config.Config, camMgr *camera.Manager, webServer *webui.Server, mqttClient *mqtt.Client, webhookClient *webhooks.Client, apiClient *wyzeapi.Client, recMgr *recording.Manager, state *wyzeapi.StateFile) {
+func wireCameraStateChanges(ctx context.Context, cfg *config.Config, camMgr *camera.Manager, webServer *webui.Server, mqttClient *mqtt.Client, webhookClient *webhooks.Client, apiClient *wyzeapi.Client, recMgr *recording.Manager, state *wyzeapi.StateFile, snapMgr *snapshot.Manager) {
 	camMgr.OnStateChange(func(cam *camera.Camera, oldState, newState camera.State) {
 		name := cam.Name()
 		snap := cam.Snapshot()
@@ -511,6 +512,14 @@ func wireCameraStateChanges(ctx context.Context, cfg *config.Config, camMgr *cam
 		go publishStateMQTT(mqttClient, cam)
 		go sendStateWebhook(ctx, webhookClient, name, snap, newState)
 		go persistState(state, apiClient, cfg.StateDir)
+
+		// On transition into streaming, grab one snapshot so the HA
+		// MQTT camera entity (which renders the published thumbnail)
+		// gets a fresh image even when SNAPSHOT_INTERVAL is disabled.
+		// Otherwise the entity stays blank until a periodic/manual snap.
+		if newState == camera.StateStreaming && oldState != camera.StateStreaming && snapMgr != nil {
+			go snapMgr.CaptureOne(ctx, name)
+		}
 	})
 }
 

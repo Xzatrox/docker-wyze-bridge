@@ -103,6 +103,25 @@ configured for the entities + device trigger to appear.
 create an automation, add trigger → **Device** → your doorbell →
 *"pressed"*. Or use a state trigger on `event.<camera>_button`.
 
+### Live video in a card (RTSP)
+
+The auto-discovered MQTT camera entity shows a periodically-refreshed
+**still image** (MQTT can't carry live video). For a **live** feed, add
+a Generic Camera pointed at the bridge's RTSP stream, then reference it
+in a card:
+
+```yaml
+# configuration.yaml
+camera:
+  - platform: generic
+    name: Front Doorbell
+    stream_source: rtsp://<BRIDGE_IP>:8554/front_doorbell
+    still_image_url: http://<BRIDGE_IP>:5080/api/snapshot/front_doorbell
+```
+
+Replace `<BRIDGE_IP>` with your HA host IP and `front_doorbell` with the
+normalized camera name. Then use `camera_view: live` in the card below.
+
 ### Ready-to-import dashboard card
 
 The add-on writes a full Lovelace dashboard to

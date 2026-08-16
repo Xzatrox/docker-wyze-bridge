@@ -1,5 +1,28 @@
 # Changelog
 
+## 4.6.7
+
+**Fix: HA MQTT camera entity was blank.** The auto-discovered camera
+entity pointed its image `topic` at the base topic where nothing is
+published, so it never showed anything. (MQTT only ever carries a small
+still JPEG — never video; live video is the RTSP/WebRTC stream.)
+
+- discovery.go: point the MQTT camera at the `.../thumbnail` topic
+  where the snapshot JPEG is actually published.
+- main.go: capture one snapshot when a camera enters the streaming
+  state, so the entity gets a fresh still even when SNAPSHOT_INTERVAL
+  is disabled (previously it stayed blank until a manual/periodic snap).
+
+Note: the MQTT camera entity is a periodically-refreshed STILL image.
+For LIVE doorbell video, add a Generic Camera pointed at the bridge's
+RTSP stream: `rtsp://<bridge-ip>:8554/<camera_name>` (still image:
+`http://<bridge-ip>:5080/api/snapshot/<camera_name>`). See DOCS.
+
+## 4.6.6
+
+Diagnostics: one-time full raw-event JSON dump (first 10 events) at INFO
+to capture exactly what a doorbell press sends over the cloud event API.
+
 ## 4.6.5
 
 Event-pipeline diagnostics promoted to INFO so the drop reason is

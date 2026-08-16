@@ -39,11 +39,17 @@ func (c *Client) PublishDiscovery(cam *camera.Camera) {
 	mac := info.MAC
 	device := haDeviceFromInfo(info)
 
-	// Camera entity
+	// Camera entity. HA's MQTT camera platform renders whatever JPEG
+	// bytes are published to `topic`; the bridge publishes snapshots to
+	// the `.../thumbnail` sub-topic, so point at that (previously it
+	// pointed at the base topic where nothing was published, leaving
+	// the entity blank). This is a still image that refreshes when a
+	// snapshot is captured — for LIVE video use the RTSP/WebRTC stream
+	// (see stream_info topic) via a generic/WebRTC camera.
 	c.publishDiscoveryConfig(fmt.Sprintf("%s/camera/%s/config", c.dtopic, mac), map[string]interface{}{
 		"name":                  info.Nickname,
 		"unique_id":             "wyze_" + mac,
-		"topic":                 fmt.Sprintf("%s/%s/", c.topic, name),
+		"topic":                 fmt.Sprintf("%s/%s/thumbnail", c.topic, name),
 		"availability_topic":    fmt.Sprintf("%s/%s/state", c.topic, name),
 		"payload_available":     "connected",
 		"payload_not_available": "disconnected",
