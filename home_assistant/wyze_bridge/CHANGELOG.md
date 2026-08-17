@@ -1,5 +1,17 @@
 # Changelog
 
+## 4.9.2
+
+**Fix MCS login: read server version byte; fix resource field format.**
+
+The MCS server sends a version byte before the first response packet.
+We were reading it as the first tag byte causing all subsequent reads
+to be misaligned → `unexpected EOF`.
+
+Also fixed the LoginRequest `id`/`device_id` fields to use the
+`android-<016x>` hex format (padded 16 hex digits) that Google's
+MCS server expects, and set `resource` to the FCM token when available.
+
 ## 4.9.1
 
 **Fix FCM: MCS Run loop blocked on empty FCM token.**
