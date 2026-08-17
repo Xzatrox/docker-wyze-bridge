@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/AlexxIT/go2rtc/pkg/tutk"
@@ -113,7 +114,11 @@ type DTLSConn struct {
 	rxSeqInit  bool
 	cmdAck     func()
 
-	// NotifyFunc, when non-nil, is called for every unsolicited
+	// ioctrlWaiters counts goroutines currently blocked in
+	// WriteAndWaitIOCtrl. The worker uses this to decide whether to
+	// queue an IOCTRL frame for the waiter or dispatch it as an
+	// unsolicited notification. Atomically read/written.
+	ioctrlWaiters int32
 	// camera→client IOCTRL frame that arrives while streaming is
 	// active (i.e. NOT consumed by a pending WriteAndWaitIOCtrl
 	// call). The HL CommandID and the full raw frame payload are
@@ -418,6 +423,11 @@ func (c *DTLSConn) WriteAndWait(req []byte, ok func(res []byte) bool) ([]byte, e
 }
 
 func (c *DTLSConn) WriteAndWaitIOCtrl(payload []byte, match func([]byte) bool, timeout time.Duration) ([]byte, error) {
+	// Signal to the worker that a waiter is active so it queues
+	// IOCTRL frames to rawCmd instead of dispatching as unsolicited.
+	atomic.AddInt32(&c.ioctrlWaiters, 1)
+	defer atomic.AddInt32(&c.ioctrlWaiters, -1)
+
 	frame := c.msgIOCtrl(payload)
 	var t *time.Timer
 	t = time.AfterFunc(1, func() {
@@ -623,18 +633,13 @@ func (c *DTLSConn) worker() {
 			c.queue(c.rawCmd, data)
 
 		case magicIOCtrl, magicChannelMsg:
-			// Try to deliver to a pending WriteAndWaitIOCtrl caller
-			// first (non-blocking). If nobody is waiting, this is an
-			// unsolicited camera notification — route it to NotifyFunc
-			// so the caller can process it without blocking the
-			// streaming loop.
+			// Route to the active WriteAndWaitIOCtrl waiter when one
+			// exists, otherwise dispatch as an unsolicited notification.
 			b := make([]byte, len(data))
 			copy(b, data)
-			select {
-			case c.rawCmd <- b:
-				// consumed by WriteAndWaitIOCtrl
-			default:
-				// no waiter — unsolicited notification
+			if atomic.LoadInt32(&c.ioctrlWaiters) > 0 {
+				c.queue(c.rawCmd, b)
+			} else {
 				c.dispatchNotify(b)
 			}
 
