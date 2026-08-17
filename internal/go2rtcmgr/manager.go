@@ -28,6 +28,10 @@ type Manager struct {
 	ready        chan struct{}
 	mu           sync.Mutex
 	cancel       context.CancelFunc
+	// ringWatcher is optional. When set, emitLogLine offers each line
+	// to it before normal level-mapping so WYZE-NOTIFY lines are
+	// consumed and forwarded to the bridge's ring pipeline.
+	ringWatcher *RingWatcher
 }
 
 // SetBasicAuth attaches Basic auth credentials so IsHealthy can
@@ -36,6 +40,13 @@ type Manager struct {
 func (m *Manager) SetBasicAuth(username, password string) {
 	m.authUsername = username
 	m.authPassword = password
+}
+
+// SetRingWatcher attaches a RingWatcher that will intercept WYZE-NOTIFY
+// lines from the forked go2rtc stdout before normal level mapping.
+// Call once before Start; safe to set to nil to disable.
+func (m *Manager) SetRingWatcher(w *RingWatcher) {
+	m.ringWatcher = w
 }
 
 // NewManager creates a new go2rtc process manager. apiPort must
@@ -222,6 +233,15 @@ func (m *Manager) emitLogLine(line string) {
 	line = strings.TrimSpace(line)
 	if line == "" {
 		return
+	}
+	// Give the ring watcher first crack before any other processing.
+	// WYZE-NOTIFY lines must be consumed here even if the watcher has
+	// no OnRing callback, so they never fall through to level mapping
+	// and appear as misleading ERR/WRN entries in the bridge log.
+	if m.ringWatcher != nil {
+		if consumed := m.ringWatcher.HandleLogLine(line); consumed {
+			return
+		}
 	}
 	if shouldSuppressGo2RTCLogLine(line) {
 		return

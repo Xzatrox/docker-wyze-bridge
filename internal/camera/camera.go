@@ -12,7 +12,7 @@ import (
 type State int
 
 const (
-	StateOffline     State = iota
+	StateOffline State = iota
 	StateDiscovering
 	StateConnecting
 	StateStreaming
@@ -165,11 +165,16 @@ func (c *Camera) Name() string {
 
 // StreamURL returns the go2rtc wyze:// URL for this camera. Reads
 // Info + Quality under the lock so it's consistent with concurrent
-// UpdateInfo / SetQuality.
-func (c *Camera) StreamURL() string {
+// UpdateInfo / SetQuality. When liveRing is true and this camera is
+// a TUTK-streamed doorbell, &notify=true is appended to the URL so
+// the forked go2rtc emits WYZE-NOTIFY ring lines on the control channel.
+func (c *Camera) StreamURL(liveRing bool) string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.Info.StreamURL(c.Quality)
+	// Only TUTK-streamed doorbells get notify=true; WebRTC-streamed
+	// doorbells (GW_BE1, etc.) don't go through the wyze:// source.
+	notify := liveRing && c.Info.IsDoorbell() && !c.Info.IsWebRTCStreamer()
+	return c.Info.StreamURL(c.Quality, notify)
 }
 
 // UpdateInfo updates the camera info (e.g., after re-discovery with new IP).

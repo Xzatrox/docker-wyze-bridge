@@ -240,8 +240,13 @@ func (c CameraInfo) NormalizedName() string {
 }
 
 // StreamURL generates a go2rtc wyze:// stream URL for this camera.
-func (c CameraInfo) StreamURL(quality string) string {
-	return fmt.Sprintf(
+// When notify is true (requires the forked go2rtc with IOCTRL watcher)
+// the &notify=true query parameter is appended, instructing the fork to
+// watch the TUTK control channel and emit WYZE-NOTIFY lines on ring.
+// Pass notify=false for standard (upstream) go2rtc to leave the URL
+// identical to the unforked build.
+func (c CameraInfo) StreamURL(quality string, notify bool) string {
+	u := fmt.Sprintf(
 		"wyze://%s?uid=%s&enr=%s&mac=%s&model=%s&subtype=%s&dtls=%v",
 		c.LanIP,
 		c.P2PID,
@@ -251,6 +256,10 @@ func (c CameraInfo) StreamURL(quality string) string {
 		quality,
 		c.DTLS,
 	)
+	if notify {
+		u += "&notify=true"
+	}
+	return u
 }
 
 // Property IDs for Wyze cloud API commands.

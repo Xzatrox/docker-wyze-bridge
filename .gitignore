@@ -29,8 +29,10 @@ test_env.list
 
 # Local dev
 /local/
-go2rtc
-go2rtc.exe
+/go2rtc
+/go2rtc.exe
+# Un-ignore the forked go2rtc source directory
+!/go2rtc/
 coverage.out
 coverage.html
 

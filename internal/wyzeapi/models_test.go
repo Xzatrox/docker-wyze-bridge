@@ -36,7 +36,7 @@ func TestCameraInfo_StreamURL(t *testing.T) {
 		DTLS:  true,
 	}
 
-	url := cam.StreamURL("hd")
+	url := cam.StreamURL("hd", false)
 
 	if !strings.HasPrefix(url, "wyze://192.168.1.10?") {
 		t.Errorf("StreamURL should start with wyze://IP, got %q", url)
