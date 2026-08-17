@@ -45,17 +45,16 @@ func (c *Client) GetEventList(macs []string, beginTimeMS, endTimeMS int64) ([]ma
 
 	// Use the v2 endpoint with wyzeapy-style parameters:
 	//   - order_by: 2 (newest first) — returns each press as its own event
-	//   - event_value_list: ["1","13","10","12"] — motion + ring + face
+	//   - event_value_list: [] (empty = no filter) — returns ALL event types
+	//     so button_press (10) isn't accidentally filtered out by firmware quirks
 	//   - begin_time: caller-supplied (typically now-recentWindow)
-	// The v4 signed endpoint with order_by:1 + advancing begin_time skips
-	// open events (end_time=0) on subsequent polls, causing missed rings.
 	payload := c.authenticatedPayload("get_event_list")
 	payload["count"] = 20
 	payload["order_by"] = 2
 	payload["begin_time"] = beginTimeMS
 	payload["end_time"] = endTimeMS
 	payload["device_mac_list"] = uniqueMACs
-	payload["event_value_list"] = []interface{}{"1", "13", "10", "12"}
+	payload["event_value_list"] = []interface{}{}
 	payload["event_tag_list"] = []interface{}{}
 	payload["event_type"] = ""
 	payload["device_mac"] = ""

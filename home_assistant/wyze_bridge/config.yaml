@@ -4,7 +4,7 @@ description: >-
   Stream your Wyze cameras locally without cloud dependencies.
 slug: wyze_bridge
 url: https://github.com/Xzatrox/docker-wyze-bridge
-version: 4.8.1
+version: 4.8.2
 stage: stable
 arch:
   - amd64
