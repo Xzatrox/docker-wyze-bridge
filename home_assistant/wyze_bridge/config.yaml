@@ -123,6 +123,7 @@ schema:
     recent_window: 'match(^\d+(ms|s|m|h)?$)?'
     live_ring: bool?
     live_ring_dedupe_window: 'match(^\d+(ms|s|m|h)?$)?'
+    fcm: bool?
   webhooks:
     urls:
       - url?

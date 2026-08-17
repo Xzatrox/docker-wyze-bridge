@@ -113,6 +113,7 @@ export_opt  'events.motion_api'              MOTION_API
 export_opt  'events.recent_window'           EVENT_RECENT_WINDOW
 export_bool 'events.live_ring'               EVENTS_LIVE_RING
 export_opt  'events.live_ring_dedupe_window' EVENTS_LIVE_RING_DEDUPE_WINDOW
+export_bool 'events.fcm'                     EVENTS_FCM
 
 # ── Webhooks + Gwell + Debug ────────────────────────────────────────────────
 export_array '.webhooks.urls'        WEBHOOK_URLS
