@@ -1,4 +1,6 @@
-# ── Stage 1: Build go2rtc from local fork + fetch video-rtc.js ──────────────
+# ── Stage 1: Build go2rtc from local fork source ────────────────────────────
+# go2rtc/ is vendored in this repo — no network fetch needed.
+# video-rtc.js is also in the repo at go2rtc/www/video-rtc.js.
 FROM golang:1.26.4-alpine AS go2rtc-build
 ARG GO2RTC_VERSION=1.9.14
 ARG GO2RTC_FORK_REF=wyze-ring
@@ -7,8 +9,6 @@ ARG TARGETARCH
 ARG CACHE_BUST=dev
 RUN apk add --no-cache git ca-certificates curl
 WORKDIR /go2rtc-src
-# Copy the local go2rtc fork source (baked into the image).
-# The fork lives at go2rtc/ inside the bridge repo.
 COPY go2rtc/ .
 RUN echo "go2rtc fork build (ref: ${GO2RTC_FORK_REF}, bust: ${CACHE_BUST})" && \
     if [ "${USE_UPSTREAM_GO2RTC}" = "1" ]; then \
@@ -22,12 +22,10 @@ RUN echo "go2rtc fork build (ref: ${GO2RTC_FORK_REF}, bust: ${CACHE_BUST})" && \
     else \
       go mod download && \
       CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /go2rtc . && \
-      echo "go2rtc wyze-ring fork build complete"; \
+      echo "go2rtc fork build complete"; \
     fi
-# Fetch video-rtc.js from upstream tag (UI asset only, unaffected by fork)
-RUN curl -fsSL \
-      "https://github.com/AlexxIT/go2rtc/raw/v${GO2RTC_VERSION}/www/video-rtc.js" \
-      -o /video-rtc.js
+# video-rtc.js is already in the repo — copy from local source
+RUN cp /go2rtc-src/www/video-rtc.js /video-rtc.js
 
 # ── Stage 2: Build Go binary ──────────────────────────────────────────────────
 FROM golang:1.26.4-alpine AS builder
