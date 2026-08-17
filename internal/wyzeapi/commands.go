@@ -2,7 +2,6 @@ package wyzeapi
 
 import (
 	"fmt"
-	"time"
 )
 
 // RunAction sends a run_action command to a camera via the Wyze cloud API.
@@ -26,12 +25,13 @@ func (c *Client) RunAction(cam CameraInfo, action string) error {
 }
 
 // GetEventList fetches recent events for the given MAC addresses.
+// Uses the v2 endpoint (same as wyzeapy) with newest-first ordering and
+// a fixed 1-hour lookback, which correctly returns each button press as
+// a separate event even while the recording is still open (end_time=0).
 func (c *Client) GetEventList(macs []string, beginTimeMS, endTimeMS int64) ([]map[string]interface{}, error) {
 	if err := c.EnsureAuth(); err != nil {
 		return nil, err
 	}
-
-	payload := c.authenticatedPayload("get_event_list")
 
 	// Deduplicate MACs
 	macSet := make(map[string]bool)
@@ -43,33 +43,39 @@ func (c *Client) GetEventList(macs []string, beginTimeMS, endTimeMS int64) ([]ma
 		uniqueMACs = append(uniqueMACs, m)
 	}
 
+	// Use the v2 endpoint with wyzeapy-style parameters:
+	//   - order_by: 2 (newest first) — returns each press as its own event
+	//   - event_value_list: ["1","13","10","12"] — motion + ring + face
+	//   - begin_time: caller-supplied (typically now-recentWindow)
+	// The v4 signed endpoint with order_by:1 + advancing begin_time skips
+	// open events (end_time=0) on subsequent polls, causing missed rings.
+	payload := c.authenticatedPayload("get_event_list")
 	payload["count"] = 20
-	payload["order_by"] = 1
+	payload["order_by"] = 2
 	payload["begin_time"] = beginTimeMS
 	payload["end_time"] = endTimeMS
-	payload["device_id_list"] = uniqueMACs
-	payload["event_value_list"] = []interface{}{}
+	payload["device_mac_list"] = uniqueMACs
+	payload["event_value_list"] = []interface{}{"1", "13", "10", "12"}
 	payload["event_tag_list"] = []interface{}{}
-	// nonce is required by the v4 signed endpoint (the sibling
-	// get_streams v4 call includes it too). Without it the request is
-	// rejected and no events are ever returned.
-	payload["nonce"] = time.Now().UnixMilli()
+	payload["event_type"] = ""
+	payload["device_mac"] = ""
 
-	sorted := sortDict(payload)
-	headers := c.signPayloadHeaders("9319141212m2ik", sorted)
-
-	resp, err := c.postRaw(c.CloudURL+"/v4/device/get_event_list", headers, sorted)
+	resp, err := c.postJSON(c.WyzeURL+"/v2/device/get_event_list", c.defaultHeaders(), payload)
 	if err != nil {
 		return nil, fmt.Errorf("get_event_list: %w", err)
 	}
 
-	eventList, ok := resp["event_list"].([]interface{})
+	// v2 response shape: {"code":"1","data":{"event_list":[...]}}
+	data, ok := resp["event_list"].([]interface{})
 	if !ok {
-		return nil, nil
+		// also try nested under "data"
+		if d, ok2 := resp["data"].(map[string]interface{}); ok2 {
+			data, _ = d["event_list"].([]interface{})
+		}
 	}
 
 	var result []map[string]interface{}
-	for _, e := range eventList {
+	for _, e := range data {
 		if m, ok := e.(map[string]interface{}); ok {
 			result = append(result, m)
 		}

@@ -48,11 +48,11 @@ const wyzeDoorbellRangAlarmType = "10"
 
 // Event is a normalized, classified Wyze cloud event.
 type Event struct {
-	ID       string // event_id (dedupe key)
-	MAC      string // device_id / device_mac
-	Kind     Kind
-	TS       time.Time // event_ts converted to local time
-	Thumbnail string   // first file_list url of type image, if any
+	ID        string // event_id (dedupe key)
+	MAC       string // device_id / device_mac
+	Kind      Kind
+	TS        time.Time // event_ts converted to local time
+	Thumbnail string    // first file_list url of type image, if any
 }
 
 // classify inspects a raw get_event_list entry and returns whether it
@@ -163,6 +163,25 @@ func eventID(raw map[string]interface{}) string {
 		return id
 	}
 	return ""
+}
+
+// eventEndTime returns the event end timestamp in epoch ms.
+// Returns 0 when the event is still "open" (recording in progress).
+// Returns -1 when the event has no resource metadata (treat as closed).
+func eventEndTime(raw map[string]interface{}) int64 {
+	resources, ok := raw["event_resources"].(map[string]interface{})
+	if !ok {
+		// No event_resources at all — not a camera recording event,
+		// treat as closed so lastTS advances normally.
+		return -1
+	}
+	switch v := resources["end_time"].(type) {
+	case float64:
+		return int64(v)
+	case int64:
+		return v
+	}
+	return 0
 }
 
 // Sink receives classified events. Any field may be nil.
@@ -310,11 +329,28 @@ func (p *Poller) processEvents(raw []map[string]interface{}, now time.Time) {
 		// event on every poll; without advancing the query window's
 		// begin_time here, a single ring would keep the window pinned
 		// and force a full re-fetch of that event every 1.5s
-		// indefinitely. Advancing lastTS lets the begin_time move
-		// forward so the closed event drops out of subsequent queries.
+		// indefinitely.
+		//
+		// CRITICAL: only advance lastTS when end_time > 0 (the recording
+		// is closed). Events with end_time=0 are still "open" — the camera
+		// is actively recording. If we advance past an open event's begin_time
+		// we will never see it again even though it is still the current event.
+		// This was causing doorbell ring events to be missed: the ring fires
+		// (end_time=0 while recording), we advance lastTS past it, and all
+		// subsequent polls start after the event so it never appears again.
 		ts := eventTS(r)
-		if !ts.IsZero() {
+		endTime := eventEndTime(r)
+		if !ts.IsZero() && endTime != 0 {
+			// Event is closed (endTime > 0) or has no resource metadata (endTime == -1).
+			// Safe to advance past it.
 			if ms := ts.UnixMilli(); ms > p.lastTS {
+				p.lastTS = ms
+			}
+		} else if !ts.IsZero() {
+			// Event is still open (endTime == 0, end_time not yet set).
+			// Keep lastTS at just before this event's begin_time so we
+			// keep fetching it on subsequent polls until the recording closes.
+			if ms := ts.UnixMilli() - 1; ms > p.lastTS {
 				p.lastTS = ms
 			}
 		}
