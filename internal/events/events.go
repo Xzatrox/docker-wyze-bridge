@@ -165,23 +165,44 @@ func eventID(raw map[string]interface{}) string {
 	return ""
 }
 
-// eventEndTime returns the event end timestamp in epoch ms.
-// Returns 0 when the event is still "open" (recording in progress).
-// Returns -1 when the event has no resource metadata (treat as closed).
+// eventEndTime returns the event end timestamp in epoch ms from the v2
+// event_resources array. Wyze v2 events include a KVS resource entry with
+// begin_time/end_time. Returns 0 when still recording, -1 when not present.
 func eventEndTime(raw map[string]interface{}) int64 {
-	resources, ok := raw["event_resources"].(map[string]interface{})
-	if !ok {
-		// No event_resources at all — not a camera recording event,
-		// treat as closed so lastTS advances normally.
+	// v2 format: event_resources is an array of resource objects
+	if arr, ok := raw["event_resources"].([]interface{}); ok {
+		for _, item := range arr {
+			res, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			// Find the KVS resource entry which has the recording window
+			if rt, _ := res["resource_type"].(string); rt != "kvs" {
+				continue
+			}
+			switch v := res["end_time"].(type) {
+			case float64:
+				return int64(v)
+			case int64:
+				return v
+			}
+			return 0
+		}
+		// event_resources present but no KVS entry — treat as closed
 		return -1
 	}
-	switch v := resources["end_time"].(type) {
-	case float64:
-		return int64(v)
-	case int64:
-		return v
+	// v4 format fallback: event_resources is an object with end_time nested
+	if resources, ok := raw["event_resources"].(map[string]interface{}); ok {
+		switch v := resources["end_time"].(type) {
+		case float64:
+			return int64(v)
+		case int64:
+			return v
+		}
+		return 0
 	}
-	return 0
+	// No event_resources at all — not a recording event, treat as closed.
+	return -1
 }
 
 // Sink receives classified events. Any field may be nil.
@@ -340,17 +361,25 @@ func (p *Poller) processEvents(raw []map[string]interface{}, now time.Time) {
 		// subsequent polls start after the event so it never appears again.
 		ts := eventTS(r)
 		endTime := eventEndTime(r)
+		kind := classify(r)
 		if !ts.IsZero() && endTime != 0 {
 			// Event is closed (endTime > 0) or has no resource metadata (endTime == -1).
 			// Safe to advance past it.
 			if ms := ts.UnixMilli(); ms > p.lastTS {
 				p.lastTS = ms
 			}
-		} else if !ts.IsZero() {
-			// Event is still open (endTime == 0, end_time not yet set).
-			// Keep lastTS at just before this event's begin_time so we
-			// keep fetching it on subsequent polls until the recording closes.
+		} else if !ts.IsZero() && kind == KindButtonPress {
+			// Button press event still open (endTime == 0): hold lastTS just
+			// before begin_time so we keep seeing this event on subsequent
+			// polls until the recording closes. This ensures rapid presses
+			// within the same recording window are all caught.
 			if ms := ts.UnixMilli() - 1; ms > p.lastTS {
+				p.lastTS = ms
+			}
+		} else if !ts.IsZero() {
+			// Motion/other event still open — advance normally. Motion clips
+			// stay open for a long time; holding back would cause excessive re-fetching.
+			if ms := ts.UnixMilli(); ms > p.lastTS {
 				p.lastTS = ms
 			}
 		}
@@ -362,8 +391,6 @@ func (p *Poller) processEvents(raw []map[string]interface{}, now time.Time) {
 			continue
 		}
 		p.markSeen(id)
-
-		kind := classify(r)
 
 		// First time we see this event: log it at INFO with the raw
 		// alarm-type + age so operators can confirm what their firmware
