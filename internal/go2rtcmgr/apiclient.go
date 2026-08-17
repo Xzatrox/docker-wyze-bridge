@@ -120,7 +120,11 @@ func (c *APIClient) ListStreams(ctx context.Context) (map[string]*StreamInfo, er
 // manifests as `av_interleaved_write_frame(): Broken pipe` on the
 // ffmpeg side.
 func (c *APIClient) AddStream(ctx context.Context, name, streamURL string) error {
-	c.log.Debug().Str("stream", name).Bool("placeholder", streamURL == "").Msg("adding stream to go2rtc")
+	c.log.Debug().
+		Str("stream", name).
+		Bool("placeholder", streamURL == "").
+		Str("url", streamURL).
+		Msg("adding stream to go2rtc")
 
 	u := fmt.Sprintf("%s/api/streams?name=%s", c.baseURL, url.QueryEscape(name))
 	if streamURL != "" {

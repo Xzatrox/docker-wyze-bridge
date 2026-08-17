@@ -534,6 +534,7 @@ func dispatchButtonPress(ctx context.Context, ev events.Event, camName string, d
 // access to the managed process's stdout).
 func startLiveRingWatcher(ctx context.Context, cfg *config.Config, camMgr *camera.Manager, go2rtcMgr *go2rtcmgr.Manager, mqttClient *mqtt.Client, webhookClient *webhooks.Client, webServer *webui.Server) *go2rtcmgr.RingDeduper {
 	if !cfg.EventsLiveRing {
+		log.Debug().Msg("EVENTS_LIVE_RING=false (default); live TUTK ring watcher disabled — using cloud poller only")
 		return nil
 	}
 	if go2rtcMgr == nil {
