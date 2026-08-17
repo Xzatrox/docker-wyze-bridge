@@ -478,6 +478,15 @@ func (c *Client) runMCS(ctx context.Context, androidID, securityToken uint64, to
 		return fmt.Errorf("send login: %w", err)
 	}
 
+	// The server responds with a version byte first, then tag+len+body packets.
+	// Read and discard the version byte.
+	vbuf := make([]byte, 1)
+	if _, err := io.ReadFull(conn, vbuf); err != nil {
+		return fmt.Errorf("read server version byte: %w", err)
+	}
+	c.log.Debug().Int("server_version", int(vbuf[0])).Msg("fcm: server version received")
+	conn.SetDeadline(time.Now().Add(10 * time.Minute))
+
 	// Read loop
 	for {
 		if ctx.Err() != nil {
@@ -515,40 +524,38 @@ func (c *Client) runMCS(ctx context.Context, androidID, securityToken uint64, to
 
 // sendMCSLogin writes the MCS version + LoginRequest protobuf.
 // We use a hand-built minimal proto rather than importing a proto lib.
+// token is the FCM registration token if available, otherwise empty.
 func (c *Client) sendMCSLogin(w io.Writer, androidID, securityToken uint64, token string) error {
-	// Build a minimal LoginRequest proto:
-	// field 1 (id): string — our "device" identifier
-	// field 2 (domain): string — "android.googleapis.com"
-	// field 3 (user): string — android_id as decimal string
-	// field 4 (resource): string — android_id as decimal string
-	// field 5 (auth_token): string — security_token as decimal string
-	// field 8 (device_id): string — "android-<android_id_hex>"
-	// field 10 (setting): repeated Setting{name, value}
-	//   - heartbeat_interval: "300"
-	// field 14 (compress_gzip): bool false
-	// field 17 (auth_service): int32 = 2 (ANDROID_ID)
-	// field 24 (client_event): repeated ClientEvent — omit
-	//
-	// For a working MCS login we need: id, domain, user, resource, auth_token.
-
 	aidStr := fmt.Sprintf("%d", androidID)
 	stStr := fmt.Sprintf("%d", securityToken)
-	deviceID := fmt.Sprintf("android-%x", androidID)
+	deviceHex := fmt.Sprintf("android-%016x", androidID)
+
+	// MCS LoginRequest proto fields:
+	// field 1  (id):           string — device identifier
+	// field 2  (domain):       string — "mcs.android.com"
+	// field 3  (user):         string — android_id decimal
+	// field 4  (resource):     string — FCM token if available, else android_id decimal
+	// field 5  (auth_token):   string — security_token decimal
+	// field 8  (device_id):    string — "android-<hex>"
+	// field 17 (auth_service): int32  — 2 = ANDROID_ID
+	resource := aidStr
+	if token != "" {
+		resource = token
+	}
 
 	var pb protoBuilder
-	pb.writeString(1, "android-"+aidStr) // id
+	pb.writeString(1, deviceHex)         // id
 	pb.writeString(2, "mcs.android.com") // domain
 	pb.writeString(3, aidStr)            // user
-	pb.writeString(4, aidStr)            // resource
-	pb.writeString(5, stStr)             // auth_token
-	pb.writeString(8, deviceID)          // device_id
+	pb.writeString(4, resource)          // resource (FCM token or android_id)
+	pb.writeString(5, stStr)             // auth_token (security_token)
+	pb.writeString(8, deviceHex)         // device_id
 	pb.writeInt32(17, 2)                 // auth_service = ANDROID_ID
-	// received_persistent_id (field 12) — empty on first connect
 	body := pb.Bytes()
 
 	buf := make([]byte, 0, 2+len(body)+10)
-	buf = append(buf, mcsVersion)         // version byte
-	buf = append(buf, mcsTagLoginRequest) // tag byte
+	buf = append(buf, mcsVersion)         // version byte (0x29 = 41)
+	buf = append(buf, mcsTagLoginRequest) // tag byte (0x02)
 	buf = appendVarint(buf, uint64(len(body)))
 	buf = append(buf, body...)
 
