@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.7.2-edge
+
+**Fix: boolean options silently ignored in add-on UI.** Same fix as 4.7.2 stable.
+
 ## 4.7.1-edge
 
 **Expose live ring + diagnostics in HA add-on UI.**

@@ -1,5 +1,17 @@
 # Changelog
 
+## 4.7.2
+
+**Fix: boolean options (live_ring, record.all, filter.blocks, etc.) were silently ignored in the add-on UI.**
+
+`bashio::config.has_value` treats `false` as "not set", which also caused
+`true` values for options the user had never previously saved to not export.
+Added `export_bool` helper in `run.sh` that reads directly from
+`/data/options.json` via `jq`, bypassing the has_value check. All boolean
+options now correctly export regardless of value:
+`events.live_ring`, `bridge.auth`, `camera.audio`, `filter.blocks`,
+`record.all`, `mqtt.enabled`, `gwell.enabled`, `debug.force_iotc_detail`.
+
 ## 4.7.1
 
 **Expose live ring + diagnostics in HA add-on UI.**

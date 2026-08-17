@@ -15,6 +15,24 @@ export_opt() {
     fi
 }
 
+# Export a boolean option. Unlike export_opt, this reads the raw JSON
+# value directly so it works for both true and false — bashio::config.has_value
+# treats false as "not set" which silently swallows EVENTS_LIVE_RING=false
+# and more importantly never exports EVENTS_LIVE_RING=true.
+# Only exports when the key is explicitly present (not null) in options.json.
+export_bool() {
+    local key=$1
+    local var=$2
+    # Convert dot-notation key to jq path (e.g. events.live_ring → .events.live_ring)
+    local jq_path
+    jq_path=$(echo "$key" | sed 's/\./\./g' | awk '{print "." $0}')
+    local val
+    val=$(jq -r "${jq_path} // \"__unset__\"" /data/options.json 2>/dev/null || echo "__unset__")
+    if [ "$val" != "__unset__" ] && [ "$val" != "null" ]; then
+        export "$var=$val"
+    fi
+}
+
 # Join a schema array at <jq_path> into a comma-separated env var. Empty
 # arrays and missing paths produce no export so Go falls back to defaults.
 # Example: export_array '.filter.names' FILTER_NAMES
@@ -36,17 +54,17 @@ export_opt 'wyze.api_key'    WYZE_API_KEY
 export_opt 'wyze.totp_key'   WYZE_TOTP_KEY
 
 # ── Bridge HTTP server + auth ───────────────────────────────────────────────
-export_opt 'bridge.ip'          BRIDGE_IP
-export_opt 'bridge.auth'        BRIDGE_AUTH
-export_opt 'bridge.username'    BRIDGE_USERNAME
-export_opt 'bridge.password'    BRIDGE_PASSWORD
-export_opt 'bridge.api_token'   BRIDGE_API_TOKEN
-export_opt 'bridge.stream_auth' STREAM_AUTH
-export_opt 'bridge.go2rtc_url'  GO2RTC_URL
+export_opt  'bridge.ip'          BRIDGE_IP
+export_bool 'bridge.auth'        BRIDGE_AUTH
+export_opt  'bridge.username'    BRIDGE_USERNAME
+export_opt  'bridge.password'    BRIDGE_PASSWORD
+export_opt  'bridge.api_token'   BRIDGE_API_TOKEN
+export_opt  'bridge.stream_auth' STREAM_AUTH
+export_opt  'bridge.go2rtc_url'  GO2RTC_URL
 
 # ── Camera defaults ─────────────────────────────────────────────────────────
-export_opt 'camera.quality' QUALITY
-export_opt 'camera.audio'   AUDIO
+export_opt  'camera.quality' QUALITY
+export_bool 'camera.audio'   AUDIO
 
 # ── MQTT — auto-detect Mosquitto addon if the user didn't set a host ───────
 if bashio::services.available "mqtt"; then
@@ -58,7 +76,7 @@ if bashio::services.available "mqtt"; then
         export MQTT_PASSWORD="$(bashio::services mqtt "password")"
     fi
 fi
-export_opt 'mqtt.enabled'         MQTT_ENABLED
+export_bool 'mqtt.enabled'         MQTT_ENABLED
 export_opt 'mqtt.host'            MQTT_HOST
 export_opt 'mqtt.port'            MQTT_PORT
 export_opt 'mqtt.username'        MQTT_USERNAME
@@ -70,10 +88,10 @@ export_opt 'mqtt.discovery_topic' MQTT_DISCOVERY_TOPIC
 export_array '.filter.names'  FILTER_NAMES
 export_array '.filter.models' FILTER_MODELS
 export_array '.filter.macs'   FILTER_MACS
-export_opt   'filter.blocks'  FILTER_BLOCKS
+export_bool 'filter.blocks'  FILTER_BLOCKS
 
 # ── Recording ───────────────────────────────────────────────────────────────
-export_opt 'record.all'       RECORD_ALL
+export_bool 'record.all'       RECORD_ALL
 export_opt 'record.path'      RECORD_PATH
 export_opt 'record.file_name' RECORD_FILE_NAME
 export_opt 'record.length'    RECORD_LENGTH
@@ -91,16 +109,16 @@ export_opt 'location.latitude'  LATITUDE
 export_opt 'location.longitude' LONGITUDE
 
 # ── Events (motion + doorbell button-press cloud polling) ───────────────────
-export_opt 'events.motion_api'              MOTION_API
-export_opt 'events.recent_window'           EVENT_RECENT_WINDOW
-export_opt 'events.live_ring'               EVENTS_LIVE_RING
-export_opt 'events.live_ring_dedupe_window' EVENTS_LIVE_RING_DEDUPE_WINDOW
+export_opt  'events.motion_api'              MOTION_API
+export_opt  'events.recent_window'           EVENT_RECENT_WINDOW
+export_bool 'events.live_ring'               EVENTS_LIVE_RING
+export_opt  'events.live_ring_dedupe_window' EVENTS_LIVE_RING_DEDUPE_WINDOW
 
 # ── Webhooks + Gwell + Debug ────────────────────────────────────────────────
 export_array '.webhooks.urls'        WEBHOOK_URLS
-export_opt 'gwell.enabled'           GWELL_ENABLED
-export_opt 'debug.log_level'         LOG_LEVEL
-export_opt 'debug.force_iotc_detail' FORCE_IOTC_DETAIL
+export_bool 'gwell.enabled'           GWELL_ENABLED
+export_opt  'debug.log_level'         LOG_LEVEL
+export_bool 'debug.force_iotc_detail' FORCE_IOTC_DETAIL
 
 # Gwell manual LAN IPs — fan the schema's [{mac, lan_ip}, ...] into the
 # GWELL_LAN_IPS env var ("MAC=IP,MAC=IP") the bridge reads at discovery.
