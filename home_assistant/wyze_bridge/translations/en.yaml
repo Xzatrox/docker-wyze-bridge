@@ -237,6 +237,16 @@ configuration:
       When both live_ring and motion_api are on, suppress a cloud event
       that arrives within this window of a live ring (default 10s).
       Prevents duplicate HA notifications for the same press.
+  events.fcm:
+    name: FCM Push Listener
+    description: >-
+      Enable a simulated Android FCM client that receives the same real-time
+      push notifications the Wyze mobile app gets — sub-second doorbell ring
+      delivery with no polling and no TUTK required. Registration state is
+      persisted across restarts. Works alongside live_ring and motion_api;
+      all three sources deduplicate against each other.
+
+  debug:
     description: Log verbosity and protocol tracing.
   debug.log_level:
     name: Log Level
