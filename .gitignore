@@ -37,3 +37,6 @@ coverage.out
 coverage.html
 
 .devcontainer/devcontainer-lock.json
+*.apk*
+.apk_extract/
+.apk_extract
