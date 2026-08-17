@@ -41,22 +41,25 @@ import (
 
 // Firebase / Wyze app credentials extracted from the Wyze APK
 // (resources.arsc global string pool, confirmed via raw binary scan).
+// Two Firebase projects exist in the APK:
+//   - Test project (fir-test-d9f49): debug build, project# 332820210871
+//   - Production project: project# 738316279406 — this is the one the
+//     mobile app uses for FCM push notifications (confirmed from the
+//     FIS error "consumer: projects/738316279406").
 const (
-	// wyzeFirebaseSenderID is gcm_defaultSenderId from resources.arsc.
-	wyzeFirebaseSenderID = "332820210871"
-	// wyzeFirebaseAppID is google_app_id from resources.arsc.
-	wyzeFirebaseAppID = "1:332820210871:android:2697b3a73bec0f7e"
+	// wyzeFirebaseSenderID is the production GCM sender ID (= GCP project number).
+	// Extracted from the production google_app_id in resources.arsc.
+	wyzeFirebaseSenderID = "738316279406"
+	// wyzeFirebaseAppID is the production Firebase App ID from resources.arsc.
+	wyzeFirebaseAppID = "1:738316279406:android:3c34a4366b9bad6d"
 	// wyzeFirebaseAPIKey is google_api_key (primary) from resources.arsc.
 	wyzeFirebaseAPIKey = "AIzaSyAeIB89cJs0N-B2orKyf0zBl1z6OynMmV8"
 	// wyzeFirebaseAPIKey2 is the second API key found in resources.arsc.
-	// The sender ID 332820210871 is the project number of the production
-	// FCM project; this second key may belong to that project.
 	wyzeFirebaseAPIKey2 = "AIzaSyDYCWqUuB65wWcJD0-UVpmKGxPccgh388A"
-	// wyzeFirebaseProjectID is project_id from resources.arsc (test project).
-	wyzeFirebaseProjectID = "fir-test-d9f49"
-	// wyzeFirebaseProductionProjectID is derived from gcm_defaultSenderId
-	// (332820210871 is the GCP project number for Wyze's production FCM project).
-	wyzeFirebaseProductionProjectID = "332820210871"
+	// wyzeFirebaseProjectID is the production project number used in FIS URLs.
+	wyzeFirebaseProjectID = "738316279406"
+	// wyzeFirebaseProductionProjectID is an alias for clarity.
+	wyzeFirebaseProductionProjectID = "738316279406"
 	// wyzeAndroidPackage is the Wyze app package name.
 	wyzeAndroidPackage = "com.hualai"
 	// mcsHost is the Firebase MCS endpoint for receiving pushes.

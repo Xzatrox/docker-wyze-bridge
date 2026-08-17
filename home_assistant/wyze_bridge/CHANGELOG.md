@@ -1,5 +1,18 @@
 # Changelog
 
+## 4.8.9
+
+**Fix FCM: use correct production Firebase credentials (project 738316279406).**
+
+The `gcm_defaultSenderId` `332820210871` in resources.arsc was from a test/debug
+Firebase config (`fir-test-d9f49`). The production Firebase App ID
+`1:738316279406:android:3c34a4366b9bad6d` was also in resources.arsc but missed
+in the initial extraction. Updated all FCM constants to use the production project:
+- Sender ID: `738316279406`
+- App ID: `1:738316279406:android:3c34a4366b9bad6d`
+- Project ID: `738316279406`
+FIS tokens are now requested against the correct production project.
+
 ## 4.8.8
 
 **Fix FCM registration: INVALID_SENDER — try FIS with both API keys and production project ID.**
