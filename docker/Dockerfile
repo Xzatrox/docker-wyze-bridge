@@ -20,6 +20,7 @@ RUN echo "go2rtc fork build (ref: ${GO2RTC_FORK_REF}, bust: ${CACHE_BUST})" && \
         -o /go2rtc && \
       chmod +x /go2rtc; \
     else \
+      go mod download && \
       CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /go2rtc . && \
       echo "go2rtc wyze-ring fork build complete"; \
     fi
