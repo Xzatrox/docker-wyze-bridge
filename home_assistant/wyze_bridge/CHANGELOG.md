@@ -1,5 +1,25 @@
 # Changelog
 
+## 4.8.4
+
+**Add FCM push listener for real-time doorbell ring detection (`EVENTS_FCM=true`).**
+
+Registers as a simulated Android device with Google's Firebase Cloud Messaging
+service using credentials from the Wyze app. Maintains a persistent MCS
+connection to receive the same push notifications the Wyze mobile app gets —
+sub-second doorbell ring delivery, no polling, no TUTK required.
+
+- `internal/fcm/fcm.go`: new FCM client — Android checkin, GCM token
+  registration, MCS persistent TLS connection, DataMessageStanza parser,
+  ring payload classifier.
+- `internal/wyzeapi/commands.go`: `RegisterPushToken()` — registers the
+  FCM device token with Wyze's `set_push_info` API so Wyze's backend
+  delivers ring pushes to this device.
+- `internal/config/config.go`: `EVENTS_FCM` env var (default `false`).
+- `cmd/wyze-bridge/main.go`: `startFCMListener()` wired after live ring
+  watcher; shares the same `RingDeduper` for cross-source deduplication.
+- FCM registration state persisted to `$STATE_DIR/fcm_state.json`.
+
 ## 4.7.2
 
 **Fix: boolean options (live_ring, record.all, filter.blocks, etc.) were silently ignored in the add-on UI.**
