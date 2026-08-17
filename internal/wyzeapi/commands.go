@@ -81,3 +81,28 @@ func (c *Client) GetEventList(macs []string, beginTimeMS, endTimeMS int64) ([]ma
 	}
 	return result, nil
 }
+
+// RegisterPushToken registers an FCM push notification token with the Wyze
+// API so that Wyze's servers send push notifications (including doorbell
+// ring events) to this device token.
+//
+// This mirrors what the Wyze mobile app does on login: it calls
+// /app/user/set_push_info with its FCM registration token so the backend
+// knows where to deliver push notifications for the authenticated account.
+func (c *Client) RegisterPushToken(fcmToken string) error {
+	if err := c.EnsureAuth(); err != nil {
+		return err
+	}
+
+	payload := c.authenticatedPayload("default")
+	payload["push_token"] = fcmToken
+	payload["push_token_type"] = 2 // 2 = FCM (Android), 1 = APNS (iOS)
+	payload["channel_type"] = ""
+	payload["phone_system_type"] = 1 // Android
+
+	_, err := c.postJSON(c.WyzeURL+"/user/set_push_info", c.defaultHeaders(), payload)
+	if err != nil {
+		return fmt.Errorf("set_push_info: %w", err)
+	}
+	return nil
+}
