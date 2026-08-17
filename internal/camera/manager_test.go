@@ -140,7 +140,7 @@ func TestCamera_StreamURL(t *testing.T) {
 		DTLS:  true,
 	}, "hd", true, false)
 
-	url := cam.StreamURL()
+	url := cam.StreamURL(false)
 	if url == "" {
 		t.Error("StreamURL should not be empty")
 	}

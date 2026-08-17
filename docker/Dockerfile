@@ -1,15 +1,30 @@
-# ── Stage 1: Fetch go2rtc binary + video-rtc.js ─────────────────────────────
-FROM alpine:3.21 AS go2rtc-fetch
+# ── Stage 1: Build go2rtc from local fork + fetch video-rtc.js ──────────────
+FROM golang:1.26.4-alpine AS go2rtc-build
 ARG GO2RTC_VERSION=1.9.14
+ARG GO2RTC_FORK_REF=wyze-ring
+ARG USE_UPSTREAM_GO2RTC=0
 ARG TARGETARCH
-RUN apk add --no-cache curl ca-certificates && \
-    ARCH=${TARGETARCH}; \
-    if [ "$ARCH" = "arm" ]; then ARCH="arm"; fi; \
-    curl -fsSL \
-      "https://github.com/AlexxIT/go2rtc/releases/download/v${GO2RTC_VERSION}/go2rtc_linux_${ARCH}" \
-      -o /go2rtc && \
-    chmod +x /go2rtc && \
-    curl -fsSL \
+ARG CACHE_BUST=dev
+RUN apk add --no-cache git ca-certificates curl
+WORKDIR /go2rtc-src
+# Copy the local go2rtc fork source (baked into the image).
+# The fork lives at go2rtc/ inside the bridge repo.
+COPY go2rtc/ .
+RUN echo "go2rtc fork build (ref: ${GO2RTC_FORK_REF}, bust: ${CACHE_BUST})" && \
+    if [ "${USE_UPSTREAM_GO2RTC}" = "1" ]; then \
+      echo "USE_UPSTREAM_GO2RTC=1: falling back to upstream release binary"; \
+      ARCH=${TARGETARCH}; \
+      if [ "$ARCH" = "arm" ]; then ARCH="arm"; fi; \
+      curl -fsSL \
+        "https://github.com/AlexxIT/go2rtc/releases/download/v${GO2RTC_VERSION}/go2rtc_linux_${ARCH}" \
+        -o /go2rtc && \
+      chmod +x /go2rtc; \
+    else \
+      CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /go2rtc . && \
+      echo "go2rtc wyze-ring fork build complete"; \
+    fi
+# Fetch video-rtc.js from upstream tag (UI asset only, unaffected by fork)
+RUN curl -fsSL \
       "https://github.com/AlexxIT/go2rtc/raw/v${GO2RTC_VERSION}/www/video-rtc.js" \
       -o /video-rtc.js
 
@@ -21,7 +36,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 # Replace placeholder video-rtc.js with real one before embedding
-COPY --from=go2rtc-fetch /video-rtc.js ./internal/webui/static/video-rtc.js
+COPY --from=go2rtc-build /video-rtc.js ./internal/webui/static/video-rtc.js
 ARG VERSION=dev
 RUN CGO_ENABLED=0 GOOS=linux \
     go build -ldflags="-s -w -X main.Version=${VERSION}" \
@@ -52,7 +67,7 @@ RUN apk add --no-cache ca-certificates tzdata ffmpeg && \
 
 COPY --from=builder      /wyze-bridge   /usr/local/bin/wyze-bridge
 COPY --from=builder      /gwell-proxy   /usr/local/bin/gwell-proxy
-COPY --from=go2rtc-fetch /go2rtc        /usr/local/bin/go2rtc
+COPY --from=go2rtc-build /go2rtc        /usr/local/bin/go2rtc
 
 EXPOSE 5080
 EXPOSE 1984

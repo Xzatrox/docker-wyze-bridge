@@ -1,5 +1,36 @@
 # Changelog
 
+## 4.7.0-edge
+
+**Live per-press doorbell ring via TUTK IOCTRL control channel (experimental).**
+Wyze's cloud groups rapid button presses into a single event, so you get
+one HA notification per ring "session" regardless of how many times the
+button was physically pressed. This release adds a local, real-time,
+per-press alternative sourced directly from the camera's live control
+channel — the same signal the Wyze app uses for its instant "someone is
+at your door" alert.
+
+- **`EVENTS_LIVE_RING=true`** enables the watcher. Off by default while
+  experimental. Requires a TUTK-streamed doorbell (`HL_DB2` / `WYZEDB3`)
+  and the forked go2rtc binary bundled in this release.
+- **`EVENTS_LIVE_RING_DEDUPE_WINDOW`** (default `10s`): when the cloud
+  poller is also enabled, the second arrival of the same physical press
+  is suppressed within this window so HA fires exactly one event.
+- go2rtc fork (`go2rtc/`): added `NotifyFunc` callback to `DTLSConn`
+  in `pkg/tutk/dtls` to route unsolicited camera IOCTRL notifications
+  to a caller-supplied handler without blocking the AV streaming loop.
+  The wyze producer (`pkg/wyze`) installs this callback when
+  `&notify=true` is in the stream URL, recognises the doorbell ring
+  CommandID (10020 / `KCmdDoorbellRing`), and emits an unconditional
+  `WYZE-NOTIFY {...}` JSON line on stdout. The bridge's `RingWatcher`
+  in `internal/go2rtcmgr` intercepts that line before any log-level
+  mapping and calls the shared `dispatchButtonPress` path.
+- Both Dockerfiles and the HA add-on Dockerfile now compile go2rtc from
+  the `go2rtc/` fork source instead of downloading the upstream binary.
+  `USE_UPSTREAM_GO2RTC=1` reverts to the upstream prebuilt binary.
+- All existing cloud-poller behavior (motion events, thumbnails) is
+  unchanged when `EVENTS_LIVE_RING=false`.
+
 ## 4.6.0-edge
 
 **go2rtc customization** — three long-standing issues that all

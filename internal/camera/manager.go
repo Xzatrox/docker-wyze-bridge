@@ -43,6 +43,9 @@ type Manager struct {
 	// onProtocolFallback fires the first time a camera is auto-promoted
 	// from TUTK to WebRTC after crossing the fallback threshold.
 	onProtocolFallback func(camName string, oldProtocol, newProtocol string, failStreak int)
+	// liveRing controls whether TUTK doorbell streams get notify=true
+	// appended to their wyze:// URL (requires the forked go2rtc).
+	liveRing bool
 }
 
 // chronicErrorThreshold is the consecutive-error count at which a
@@ -79,7 +82,13 @@ func NewManager(
 	return m
 }
 
-// SetGo2RTCAPI attaches (or replaces) the go2rtc API client. Called by
+// SetLiveRing enables or disables the notify=true query parameter on
+// TUTK doorbell stream URLs. Call before ConnectAll when
+// EVENTS_LIVE_RING=true and the forked go2rtc is in use.
+func (m *Manager) SetLiveRing(enabled bool) {
+	m.liveRing = enabled
+}
+
 // main() once the go2rtc subprocess is ready. Safe to call concurrently
 // with ongoing Manager operations — callers that need go2rtc use
 // m.go2rtcClient() and gracefully handle a nil return.
@@ -326,7 +335,7 @@ func (m *Manager) streamSourceFor(cam *Camera) (url, protocol string) {
 	case info.IsGwell():
 		return "", "gwell"
 	default:
-		return cam.StreamURL(), "tutk"
+		return cam.StreamURL(m.liveRing), "tutk"
 	}
 }
 
@@ -514,7 +523,7 @@ func (m *Manager) SetQuality(ctx context.Context, name, quality string) error {
 	}
 	// Remove and re-add in go2rtc with new URL
 	_ = go2rtc.DeleteStream(ctx, name)
-	return go2rtc.AddStream(ctx, name, cam.StreamURL())
+	return go2rtc.AddStream(ctx, name, cam.StreamURL(m.liveRing))
 }
 
 // RestartStream forces a camera reconnect.

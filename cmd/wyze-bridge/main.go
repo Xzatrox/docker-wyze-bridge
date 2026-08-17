@@ -28,7 +28,7 @@ import (
 )
 
 // Version is set at build time via ldflags.
-var Version = "4.6.8"
+var Version = "4.7.0"
 
 func main() {
 	// Load configuration
@@ -254,7 +254,8 @@ func main() {
 
 	// Start all background goroutines. The WebUI listener is already running
 	go camMgr.RunDiscoveryLoop(ctx)
-	startEventPoller(ctx, cfg, camMgr, mqttClient, webhookClient, webServer, apiClient)
+	deduper := startLiveRingWatcher(ctx, cfg, camMgr, go2rtcMgr, mqttClient, webhookClient, webServer)
+	startEventPoller(ctx, cfg, camMgr, mqttClient, webhookClient, webServer, apiClient, deduper)
 	go snapMgr.Run(ctx)
 	go snapPruner.Run(ctx)
 	go recMgr.RunPruner(ctx)
@@ -429,7 +430,7 @@ func setupWebhooks(cfg *config.Config) *webhooks.Client {
 // MOTION_API (EventApiInterval) is set. It classifies each Wyze cloud
 // event as motion or a doorbell button-press and fans it out to MQTT
 // (HA event entity + motion topic), webhooks, and the /metrics log.
-func startEventPoller(ctx context.Context, cfg *config.Config, camMgr *camera.Manager, mqttClient *mqtt.Client, webhookClient *webhooks.Client, webServer *webui.Server, apiClient *wyzeapi.Client) {
+func startEventPoller(ctx context.Context, cfg *config.Config, camMgr *camera.Manager, mqttClient *mqtt.Client, webhookClient *webhooks.Client, webServer *webui.Server, apiClient *wyzeapi.Client, deduper *go2rtcmgr.RingDeduper) {
 	if cfg.EventApiInterval <= 0 {
 		return
 	}
@@ -451,21 +452,7 @@ func startEventPoller(ctx context.Context, cfg *config.Config, camMgr *camera.Ma
 
 	sink := events.Sink{
 		OnButtonPress: func(ev events.Event, camName string) {
-			msg := "doorbell button pressed"
-			evLog.Info().Str("cam", camName).Msg(msg)
-			if l := webServer.Events(); l != nil {
-				l.Record(webui.Event{Kind: "button_press", Camera: camName, Message: "pressed"})
-			}
-			if mqttClient != nil {
-				mqttClient.PublishButtonPress(camName)
-			}
-			if webhookClient != nil {
-				webhookClient.Send(ctx, webhooks.EventButtonPress, camName, map[string]interface{}{
-					"event_id":  ev.ID,
-					"timestamp": ev.TS.UTC(),
-					"thumbnail": ev.Thumbnail,
-				})
-			}
+			dispatchButtonPress(ctx, ev, camName, deduper, mqttClient, webhookClient, webServer, evLog)
 		},
 		OnMotion: func(ev events.Event, camName string) {
 			evLog.Debug().Str("cam", camName).Msg("motion event")
@@ -499,6 +486,114 @@ func startEventPoller(ctx context.Context, cfg *config.Config, camMgr *camera.Ma
 	}
 
 	go poller.Run(ctx, macs)
+}
+
+// dispatchButtonPress fans a confirmed doorbell button-press event out
+// to all downstream sinks: MQTT event entity, webhook, and the /metrics
+// event log. Called from both the cloud poller and the live ring watcher
+// so both paths produce identical downstream behavior.
+//
+// deduper may be nil (disabled when EVENTS_LIVE_RING=false); when non-
+// nil it suppresses the second arrival of the same physical press within
+// the configured cross-source window.
+func dispatchButtonPress(ctx context.Context, ev events.Event, camName string, deduper *go2rtcmgr.RingDeduper, mqttClient *mqtt.Client, webhookClient *webhooks.Client, webServer *webui.Server, evLog zerolog.Logger) {
+	if deduper != nil {
+		pressTime := ev.TS
+		if pressTime.IsZero() {
+			pressTime = time.Now()
+		}
+		if !deduper.ShouldDispatch(camName, pressTime) {
+			evLog.Debug().Str("cam", camName).Msg("suppressed duplicate ring (cross-source dedupe)")
+			return
+		}
+	}
+
+	evLog.Info().Str("cam", camName).Msg("doorbell button pressed")
+	if l := webServer.Events(); l != nil {
+		l.Record(webui.Event{Kind: "button_press", Camera: camName, Message: "pressed"})
+	}
+	if mqttClient != nil {
+		mqttClient.PublishButtonPress(camName)
+	}
+	if webhookClient != nil {
+		webhookClient.Send(ctx, webhooks.EventButtonPress, camName, map[string]interface{}{
+			"event_id":  ev.ID,
+			"timestamp": ev.TS.UTC(),
+			"thumbnail": ev.Thumbnail,
+		})
+	}
+}
+
+// startLiveRingWatcher sets up the live TUTK ring watcher when
+// EVENTS_LIVE_RING=true. It attaches a RingWatcher to the go2rtc
+// Manager (so WYZE-NOTIFY stdout lines are intercepted), configures
+// the camera manager to add &notify=true to doorbell stream URLs, and
+// returns a shared RingDeduper for cross-source deduplication with the
+// cloud event poller. Returns nil when the feature is disabled or when
+// go2rtcMgr is nil (external go2rtc mode — the ring watcher requires
+// access to the managed process's stdout).
+func startLiveRingWatcher(ctx context.Context, cfg *config.Config, camMgr *camera.Manager, go2rtcMgr *go2rtcmgr.Manager, mqttClient *mqtt.Client, webhookClient *webhooks.Client, webServer *webui.Server) *go2rtcmgr.RingDeduper {
+	if !cfg.EventsLiveRing {
+		return nil
+	}
+	if go2rtcMgr == nil {
+		log.Warn().Msg("EVENTS_LIVE_RING=true but external go2rtc in use; live ring watcher requires the managed sidecar — feature disabled")
+		return nil
+	}
+
+	// Enable notify=true on TUTK doorbell streams so the forked
+	// go2rtc activates its IOCTRL watcher for those cameras.
+	camMgr.SetLiveRing(true)
+
+	dedupeWindow := cfg.EventsLiveRingDedupeWindow
+	if dedupeWindow <= 0 {
+		dedupeWindow = 10 * time.Second
+	}
+	deduper := go2rtcmgr.NewRingDeduper(dedupeWindow)
+
+	ringLog := log.With().Str("c", "wyze-ring").Logger()
+	watcher := go2rtcmgr.NewRingWatcher(ringLog)
+
+	evLog := log.With().Str("c", "events").Logger()
+
+	watcher.OnRing = func(ev go2rtcmgr.RingEvent) {
+		// Resolve MAC → camera name. The MAC in the WYZE-NOTIFY line
+		// comes straight from the wyze:// URL param the bridge set.
+		var camName string
+		for _, cam := range camMgr.Cameras() {
+			if cam.GetInfo().MAC == ev.MAC {
+				camName = cam.Name()
+				break
+			}
+		}
+		if camName == "" && ev.Stream != "" {
+			// Fall back to stream name (normalized camera name).
+			camName = ev.Stream
+		}
+		if camName == "" {
+			evLog.Warn().Str("mac", ev.MAC).Str("stream", ev.Stream).
+				Msg("live ring: cannot resolve camera name, dropping event")
+			return
+		}
+
+		// Synthesize an events.Event so dispatchButtonPress can use
+		// it uniformly. No thumbnail from the live channel.
+		synth := events.Event{
+			ID:   "ring:" + ev.MAC + ":" + fmt.Sprintf("%d", ev.TS.UnixMilli()),
+			MAC:  ev.MAC,
+			Kind: events.KindButtonPress,
+			TS:   ev.TS,
+		}
+		dispatchButtonPress(ctx, synth, camName, deduper, mqttClient, webhookClient, webServer, evLog)
+	}
+
+	go2rtcMgr.SetRingWatcher(watcher)
+
+	log.Info().
+		Dur("dedupe_window", dedupeWindow).
+		Msg("live TUTK ring watcher enabled (EVENTS_LIVE_RING=true)")
+
+	return deduper
 }
 
 func wireCameraStateChanges(ctx context.Context, cfg *config.Config, camMgr *camera.Manager, webServer *webui.Server, mqttClient *mqtt.Client, webhookClient *webhooks.Client, apiClient *wyzeapi.Client, recMgr *recording.Manager, state *wyzeapi.StateFile, snapMgr *snapshot.Manager) {
