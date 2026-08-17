@@ -30,7 +30,7 @@ import (
 )
 
 // Version is set at build time via ldflags.
-var Version = "4.8.7"
+var Version = "4.8.8"
 
 func main() {
 	// Load configuration

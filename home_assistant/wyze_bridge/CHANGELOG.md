@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.8.8
+
+**Fix FCM registration: INVALID_SENDER — try FIS with both API keys and production project ID.**
+
+`INVALID_SENDER` on GCM register3 means the sender ID requires FIS auth,
+but FIS was blocked on the test-project API key. The `gcm_defaultSenderId`
+`332820210871` is the production GCP project number; added
+`fisToken()` that tries both extracted API keys against both the test and
+production project IDs, falling back to no-FIS if all are blocked.
+The second API key (`AIzaSyDYCWq...`) may belong to the production project.
+
 ## 4.8.7
 
 **Fix FCM registration: drop FIS token step (API_KEY_SERVICE_BLOCKED).**

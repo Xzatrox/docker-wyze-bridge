@@ -48,8 +48,15 @@ const (
 	wyzeFirebaseAppID = "1:332820210871:android:2697b3a73bec0f7e"
 	// wyzeFirebaseAPIKey is google_api_key (primary) from resources.arsc.
 	wyzeFirebaseAPIKey = "AIzaSyAeIB89cJs0N-B2orKyf0zBl1z6OynMmV8"
-	// wyzeFirebaseProjectID is project_id from resources.arsc.
+	// wyzeFirebaseAPIKey2 is the second API key found in resources.arsc.
+	// The sender ID 332820210871 is the project number of the production
+	// FCM project; this second key may belong to that project.
+	wyzeFirebaseAPIKey2 = "AIzaSyDYCWqUuB65wWcJD0-UVpmKGxPccgh388A"
+	// wyzeFirebaseProjectID is project_id from resources.arsc (test project).
 	wyzeFirebaseProjectID = "fir-test-d9f49"
+	// wyzeFirebaseProductionProjectID is derived from gcm_defaultSenderId
+	// (332820210871 is the GCP project number for Wyze's production FCM project).
+	wyzeFirebaseProductionProjectID = "332820210871"
 	// wyzeAndroidPackage is the Wyze app package name.
 	wyzeAndroidPackage = "com.hualai"
 	// mcsHost is the Firebase MCS endpoint for receiving pushes.
@@ -274,31 +281,101 @@ func androidCheckin(ctx context.Context) (androidID, securityToken uint64, err e
 
 // ---- GCM Token Registration ------------------------------------------------
 
-// gcmRegister registers this virtual Android device with GCM/FCM to receive
-// push notifications for the Wyze app's sender ID.
-//
-// Uses the legacy GCM register3 endpoint with AidLogin authorization.
-// The X-Goog-Firebase-Installations-Auth header is intentionally omitted —
-// it requires the Firebase Installations API which is blocked on Wyze's
-// API key for external callers. The GCM endpoint accepts registrations
-// without it when the AidLogin credentials are valid.
+// fisToken attempts to obtain a Firebase Installation Service auth token.
+// It tries both API keys and both project IDs since the resources.arsc
+// contained test-project credentials but the production sender ID points
+// to a different project (number 332820210871).
+// Returns ("", nil) if all attempts are blocked — caller proceeds without it.
+func fisToken(ctx context.Context) string {
+	attempts := []struct{ apiKey, projectID, appID string }{
+		// Production project derived from gcm_defaultSenderId
+		{wyzeFirebaseAPIKey2, wyzeFirebaseProductionProjectID, wyzeFirebaseAppID},
+		{wyzeFirebaseAPIKey, wyzeFirebaseProductionProjectID, wyzeFirebaseAppID},
+		// Test project from resources.arsc
+		{wyzeFirebaseAPIKey, wyzeFirebaseProjectID, wyzeFirebaseAppID},
+		{wyzeFirebaseAPIKey2, wyzeFirebaseProjectID, wyzeFirebaseAppID},
+	}
+	for _, a := range attempts {
+		tok, err := fisTokenOnce(ctx, a.apiKey, a.projectID, a.appID)
+		if err == nil && tok != "" {
+			return tok
+		}
+	}
+	return ""
+}
+
+func fisTokenOnce(ctx context.Context, apiKey, projectID, appID string) (string, error) {
+	fidBytes := make([]byte, 17)
+	if _, err := rand.Read(fidBytes); err != nil {
+		return "", err
+	}
+	fidBytes[0] = 0x70 | (fidBytes[0] & 0x0f)
+	fid := base64.URLEncoding.EncodeToString(fidBytes)[:22]
+
+	body := map[string]interface{}{
+		"fid":         fid,
+		"appId":       appID,
+		"authVersion": "FIS_v2",
+		"sdkVersion":  "a:17.0.0",
+	}
+	bodyJSON, _ := json.Marshal(body)
+
+	fisURL := fmt.Sprintf(
+		"https://firebaseinstallations.googleapis.com/v1/projects/%s/installations",
+		projectID,
+	)
+	req, err := http.NewRequestWithContext(ctx, "POST", fisURL, bytes.NewReader(bodyJSON))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-goog-api-key", apiKey)
+	req.Header.Set("x-android-package", wyzeAndroidPackage)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != 200 && resp.StatusCode != 201 {
+		return "", fmt.Errorf("FIS HTTP %d", resp.StatusCode)
+	}
+	var fisResp struct {
+		AuthToken struct {
+			Token string `json:"token"`
+		} `json:"authToken"`
+	}
+	if err := json.Unmarshal(b, &fisResp); err != nil {
+		return "", err
+	}
+	return fisResp.AuthToken.Token, nil
+}
+
 func gcmRegister(ctx context.Context, androidID, securityToken uint64) (string, error) {
-	// Generate a stable app instance ID from the android_id so it's
-	// deterministic across re-registrations with the same device.
+	// Try to get a FIS auth token — required by newer GCM endpoints.
+	// Falls back gracefully to empty string if all FIS attempts are blocked.
+	fisAuthToken := fisToken(ctx)
+
+	// Derive a stable app instance ID from android_id.
 	appInstanceIDBytes := make([]byte, 16)
 	binary.BigEndian.PutUint64(appInstanceIDBytes[0:8], androidID)
 	binary.BigEndian.PutUint64(appInstanceIDBytes[8:16], securityToken)
-	appInstanceID := base64.URLEncoding.EncodeToString(appInstanceIDBytes)
+	appInstanceID := base64.URLEncoding.EncodeToString(appInstanceIDBytes)[:22]
 
 	form := url.Values{}
 	form.Set("app", wyzeAndroidPackage)
 	form.Set("X-subtype", wyzeFirebaseSenderID)
 	form.Set("sender", wyzeFirebaseSenderID)
 	form.Set("device", fmt.Sprintf("%d", androidID))
-	form.Set("appid", appInstanceID[:22]) // FID is 22 chars
-	form.Set("X-appid", appInstanceID[:22])
+	form.Set("appid", appInstanceID)
+	form.Set("X-appid", appInstanceID)
 	form.Set("X-scope", "*")
 	form.Set("X-firebase-app-name-hash", wyzeFirebaseProjectID)
+	if fisAuthToken != "" {
+		form.Set("X-goog-firebase-installations-auth", fisAuthToken)
+	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST",
 		"https://android.clients.google.com/c2dm/register3",
