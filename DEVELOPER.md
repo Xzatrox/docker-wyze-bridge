@@ -39,7 +39,26 @@ If you prefer developing outside a container, you need:
 
 ### 1. Get go2rtc
 
-Download from [github.com/AlexxIT/go2rtc/releases](https://github.com/AlexxIT/go2rtc/releases/tag/v1.9.14) and place in the repo root:
+The repo includes the forked go2rtc source at `go2rtc/` (the `wyze-ring` fork with live IOCTRL ring notification support). Build it and place the binary at the repo root:
+
+```bash
+# Linux/macOS
+cd go2rtc
+CGO_ENABLED=0 go build -o ../go2rtc .
+cd ..
+chmod +x go2rtc
+
+# Windows (PowerShell)
+Set-Location go2rtc
+go build -o ..\go2rtc.exe .
+Set-Location ..
+```
+
+The bridge will find `./go2rtc` (or `./go2rtc.exe`) automatically.
+
+**To develop the live ring feature:** build the fork as above. Set `EVENTS_LIVE_RING=true` in your `.env.dev`. The forked go2rtc will emit `WYZE-NOTIFY {...}` lines on stdout when a doorbell button is pressed and `&notify=true` is appended to the camera's `wyze://` URL (done automatically for TUTK-streamed doorbells when `EVENTS_LIVE_RING=true`).
+
+**To use the upstream go2rtc** (no live ring support, all other streaming unchanged):
 
 ```bash
 # Linux/macOS (amd64)
@@ -55,8 +74,6 @@ Invoke-WebRequest -Uri "https://github.com/AlexxIT/go2rtc/releases/download/v1.9
 Expand-Archive go2rtc.zip -DestinationPath .
 Remove-Item go2rtc.zip
 ```
-
-The bridge will find `./go2rtc` (or `./go2rtc.exe`) automatically.
 
 ### 2. Create your env file
 

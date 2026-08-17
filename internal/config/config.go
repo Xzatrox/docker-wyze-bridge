@@ -140,6 +140,21 @@ type Config struct {
 	// old an event may be and still be acted on (default 30s).
 	EventApiInterval     time.Duration
 	EventApiRecentWindow time.Duration
+
+	// Live ring via TUTK IOCTRL control channel (experimental).
+	//
+	// EventsLiveRing enables the per-press doorbell ring watcher that
+	// reads ring notifications from the forked go2rtc wyze source's
+	// IOCTRL control channel. Requires a forked go2rtc binary built
+	// with the WYZE-NOTIFY stdout emit. Default false (opt-in while
+	// experimental). Env: EVENTS_LIVE_RING.
+	//
+	// EventsLiveRingDedupeWindow is the window within which a cloud-
+	// poller button_press event is treated as a duplicate of an already-
+	// dispatched live ring (and suppressed). Default 10s. Env:
+	// EVENTS_LIVE_RING_DEDUPE_WINDOW.
+	EventsLiveRing             bool
+	EventsLiveRingDedupeWindow time.Duration
 }
 
 // CamOverride holds per-camera setting overrides.
@@ -272,6 +287,11 @@ func Load() (*Config, error) {
 		// MOTION_API accepts a duration (e.g. "1500ms", "2s"); 0 = off.
 		EventApiInterval:     envDuration("MOTION_API", 0),
 		EventApiRecentWindow: envDuration("EVENT_RECENT_WINDOW", 120*time.Second),
+
+		// Live ring via TUTK IOCTRL control channel (experimental).
+		// Default off until the forked go2rtc is bundled and validated.
+		EventsLiveRing:             envBool("EVENTS_LIVE_RING", false),
+		EventsLiveRingDedupeWindow: envDuration("EVENTS_LIVE_RING_DEDUPE_WINDOW", 10*time.Second),
 	}
 
 	// Derive default BRIDGE_PASSWORD from WYZE_EMAIL if not set
