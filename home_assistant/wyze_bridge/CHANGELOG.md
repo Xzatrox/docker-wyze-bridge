@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.8.7
+
+**Fix FCM registration: drop FIS token step (API_KEY_SERVICE_BLOCKED).**
+
+The Firebase Installations API (`firebaseinstallations.googleapis.com`) is
+blocked for Wyze's API key for external callers. Removed the FIS token step
+entirely — the legacy GCM register3 endpoint accepts registrations with
+just `AidLogin` authorization (android_id:security_token) without the
+`X-Goog-Firebase-Installations-Auth` header when using a pre-Firebase-SDK-v17
+flow, which is what the older Wyze app version uses.
+
 ## 4.8.6
 
 **Fix FCM registration: FIS_AUTH_ERROR on GCM register.**
