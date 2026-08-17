@@ -253,7 +253,7 @@ func NewPoller(api *wyzeapi.Client, lookup CameraLookup, sink Sink, interval, re
 		log:          log,
 		seen:         make(map[string]struct{}),
 		maxSeen:      256,
-		rawDumpsLeft: 50,
+		rawDumpsLeft: 10,
 	}
 }
 
