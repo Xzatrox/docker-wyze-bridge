@@ -1,5 +1,23 @@
 # Changelog
 
+## 4.7.1
+
+**Expose live ring + diagnostics in HA add-on UI.**
+
+- `home_assistant/wyze_bridge/config.yaml`: add `events.live_ring` (bool)
+  and `events.live_ring_dedupe_window` (duration) to the add-on schema so
+  the options appear in the Configuration tab.
+- `home_assistant/wyze_bridge/run.sh`: map the new options to
+  `EVENTS_LIVE_RING` / `EVENTS_LIVE_RING_DEDUPE_WINDOW`.
+- `home_assistant/wyze_bridge/DOCS.md`: document the live ring feature,
+  requirements, and minimal config example. Update the "one notification
+  per session" note to reference the new per-press path.
+- `home_assistant/wyze_bridge/translations/en.yaml`: labels + descriptions
+  for the two new events fields so the UI shows human-readable help text.
+- `internal/go2rtcmgr/apiclient.go`: log the full stream URL (including
+  `&notify=true` when live ring is on) in the `AddStream` debug line.
+- `cmd/wyze-bridge/main.go`: explicit debug log when live ring is disabled.
+
 ## 4.7.0
 
 **Live per-press doorbell ring via TUTK IOCTRL control channel (experimental).**

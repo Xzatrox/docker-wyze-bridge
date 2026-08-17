@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.7.1-edge
+
+**Expose live ring + diagnostics in HA add-on UI.**
+
+- `events.live_ring` and `events.live_ring_dedupe_window` now appear in the
+  add-on Configuration tab. Set `live_ring: true` (with `motion_api` also
+  set) to enable per-press doorbell ring via the local TUTK control channel.
+- Stream URL logged at debug level so `&notify=true` is visible when live
+  ring is active.
+- Explicit debug log when live ring is disabled (default state).
+
 ## 4.7.0-edge
 
 **Live per-press doorbell ring via TUTK IOCTRL control channel (experimental).**
