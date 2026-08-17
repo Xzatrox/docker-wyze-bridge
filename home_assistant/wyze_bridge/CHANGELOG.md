@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.9.1
+
+**Fix FCM: MCS Run loop blocked on empty FCM token.**
+
+The `Run` loop was guarding on `tok == ""` which caused it to spin-wait
+forever when GCM registration fails (FIS blocked). Since MCS login only
+requires `android_id` + `security_token`, the token check is removed.
+MCS now connects immediately after checkin even without a GCM token.
+
 ## 4.9.0
 
 **FCM: proceed to MCS without GCM token when FIS is blocked.**

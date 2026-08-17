@@ -188,8 +188,8 @@ func (c *Client) Run(ctx context.Context) {
 		tok := c.state.FCMToken
 		c.mu.Unlock()
 
-		if aid == 0 || tok == "" {
-			c.log.Warn().Msg("fcm: not registered, retrying in 30s")
+		if aid == 0 {
+			c.log.Warn().Msg("fcm: no android_id yet, retrying in 30s")
 			select {
 			case <-ctx.Done():
 				return
@@ -197,6 +197,8 @@ func (c *Client) Run(ctx context.Context) {
 			}
 			continue
 		}
+		// tok may be empty if GCM registration failed — MCS login still
+		// works with just android_id + security_token.
 
 		c.log.Info().Msg("fcm: connecting to MCS")
 		err := c.runMCS(ctx, aid, st, tok)
