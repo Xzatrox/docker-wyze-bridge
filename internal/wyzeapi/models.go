@@ -257,7 +257,7 @@ func (c CameraInfo) StreamURL(quality string, notify bool) string {
 		c.DTLS,
 	)
 	if notify {
-		u += "&notify=true&verbose=true"
+		u += "&notify=true"
 	}
 	return u
 }

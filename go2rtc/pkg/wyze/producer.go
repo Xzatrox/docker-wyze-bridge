@@ -112,26 +112,17 @@ func NewProducer(rawURL string) (*Producer, error) {
 	mac := query.Get("mac")
 
 	// Install the ring notification watcher when &notify=true is set.
-	// This is gated so the behavior is identical to upstream go2rtc when
-	// the flag is absent — no WYZE-NOTIFY output, no extra goroutines.
+	// NOTE: Phase 0 capture confirmed that HL_DB2 firmware 4.51.3.6791
+	// does NOT send an unsolicited IOCTRL ring notification to the
+	// connected TUTK client on button press. The ring goes to the Wyze
+	// cloud only. The NotifyFunc is wired but will never fire on this
+	// firmware — kept in place in case a different firmware or model
+	// exposes the signal.
 	if client.Notify() && client.conn != nil {
 		client.conn.NotifyFunc = func(cmdID uint16, hlPayload []byte) {
-			// Always emit every unsolicited IOCTRL frame unconditionally
-			// so the bridge can capture the real CommandID from a live press.
-			// Once the ring CommandID is confirmed, isRingCmdID can be
-			// tightened to filter only that value.
 			if isRingCmdID(cmdID) {
 				emitRingNotify("", mac)
 			}
-			// Always dump unknown frames too — this is the Phase 0 capture path.
-			// The bridge logs these at INFO so they're visible at default log level.
-			// Format: WYZE-IOCTRL <cmdID_decimal> <cmdID_hex> <payloadLen> <payload_hex>
-			payloadPreview := hlPayload
-			if len(payloadPreview) > 32 {
-				payloadPreview = payloadPreview[:32]
-			}
-			fmt.Printf("WYZE-IOCTRL cmdID=%d (0x%04x) payloadLen=%d payload=%x\n",
-				cmdID, cmdID, len(hlPayload), payloadPreview)
 		}
 	}
 

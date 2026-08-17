@@ -247,16 +247,6 @@ func (m *Manager) emitLogLine(line string) {
 		return
 	}
 
-	// Promote go2rtc wyze verbose lines to info so DTLS frame dumps
-	// and ring diagnostic output are visible at default log level.
-	// These are emitted by fmt.Printf in pkg/wyze (not via go2rtc's
-	// leveled logger) so they have no standard timestamp/level prefix.
-	if strings.HasPrefix(line, "[Wyze]") || strings.HasPrefix(line, "[DTLS") ||
-		strings.HasPrefix(line, "WYZE-IOCTRL") {
-		m.log.Info().Msg(line)
-		return
-	}
-
 	parts := strings.SplitN(line, " ", 3)
 	if len(parts) == 3 {
 		switch parts[1] {
