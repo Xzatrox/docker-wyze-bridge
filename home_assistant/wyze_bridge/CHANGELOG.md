@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.8.6
+
+**Fix FCM registration: FIS_AUTH_ERROR on GCM register.**
+
+The GCM register endpoint requires a Firebase Installation Service (FIS)
+auth token in `X-Goog-Firebase-Installations-Auth`, not the raw API key.
+Added `fisToken()` which calls the FIS API first to get a short-lived
+installation auth token, then uses it in the GCM register request.
+Also drops the `x-android-cert` header (not required for non-Play-Integrity
+flows) which was causing the auth failure.
+
 ## 4.8.5
 
 **Expose FCM Push Listener toggle in HA add-on UI.**
