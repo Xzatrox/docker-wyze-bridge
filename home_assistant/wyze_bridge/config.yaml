@@ -121,6 +121,8 @@ schema:
   events:
     motion_api: 'match(^\d+(ms|s|m|h)?$)?'
     recent_window: 'match(^\d+(ms|s|m|h)?$)?'
+    live_ring: bool?
+    live_ring_dedupe_window: 'match(^\d+(ms|s|m|h)?$)?'
   webhooks:
     urls:
       - url?

@@ -91,8 +91,10 @@ export_opt 'location.latitude'  LATITUDE
 export_opt 'location.longitude' LONGITUDE
 
 # ── Events (motion + doorbell button-press cloud polling) ───────────────────
-export_opt 'events.motion_api'     MOTION_API
-export_opt 'events.recent_window'  EVENT_RECENT_WINDOW
+export_opt 'events.motion_api'              MOTION_API
+export_opt 'events.recent_window'           EVENT_RECENT_WINDOW
+export_opt 'events.live_ring'               EVENTS_LIVE_RING
+export_opt 'events.live_ring_dedupe_window' EVENTS_LIVE_RING_DEDUPE_WINDOW
 
 # ── Webhooks + Gwell + Debug ────────────────────────────────────────────────
 export_array '.webhooks.urls'        WEBHOOK_URLS

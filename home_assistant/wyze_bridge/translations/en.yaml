@@ -208,8 +208,35 @@ configuration:
       `is_doorbell` are UI metadata. See DEVELOPER.md "Adding a
       camera model" for the routing matrix.
 
-  debug:
-    name: Debugging
+  events:
+    name: Events
+    description: >-
+      Poll Wyze's cloud API for doorbell ring and motion events.
+      Enable live_ring for real-time per-press detection via the
+      local TUTK control channel (experimental).
+  events.motion_api:
+    name: Cloud Poll Interval
+    description: >-
+      How often to poll Wyze's event API (e.g. 1500ms, 2s).
+      Required for motion events and ring thumbnails. Empty = disabled.
+  events.recent_window:
+    name: Recent Window
+    description: >-
+      Only act on events newer than this (default 30s). Prevents
+      replaying a backlog of old events on startup.
+  events.live_ring:
+    name: Live Ring (experimental)
+    description: >-
+      Enable per-press doorbell ring via the local TUTK control channel.
+      Fires once per physical button press with sub-second latency —
+      bypasses Wyze cloud grouping. Requires HL_DB2 or WYZEDB3.
+      Set motion_api too for motion events and thumbnails.
+  events.live_ring_dedupe_window:
+    name: Live Ring Dedupe Window
+    description: >-
+      When both live_ring and motion_api are on, suppress a cloud event
+      that arrives within this window of a live ring (default 10s).
+      Prevents duplicate HA notifications for the same press.
     description: Log verbosity and protocol tracing.
   debug.log_level:
     name: Log Level

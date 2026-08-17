@@ -111,9 +111,43 @@ create an automation, add trigger → **Device** → your doorbell →
 > event and you get **one** notification. This is a Wyze cloud
 > limitation, not a bridge bug — the bridge dispatches every distinct
 > event the cloud actually emits. The same grouping affects the Wyze app
-> and Alexa routines. True per-press detection would require reading the
-> camera's live control channel, which the cloud event API does not
-> expose.
+> and Alexa routines.
+>
+> **To get a true per-press notification**, enable **Live Ring** below.
+
+### Live Ring (experimental) — per-press via local TUTK control channel
+
+Enable under the **events** section:
+
+- **live_ring** — `true` activates the live TUTK ring watcher. Requires
+  `motion_api` to also be set (the cloud poller still handles motion
+  events and thumbnails). Default `false`.
+- **live_ring_dedupe_window** — when both live ring and `motion_api` are
+  on, a cloud event arriving within this window of a live ring is
+  suppressed so HA fires **exactly one** `pressed` event per physical
+  press. Default `10s`.
+
+When `live_ring` is on, the bridge reads unsolicited ring notifications
+from the doorbell's TUTK IOCTRL control channel — the same signal the
+Wyze app uses for its instant "someone is at your door" alert. This
+fires **once per physical button press** with sub-second latency,
+bypassing Wyze's cloud grouping entirely.
+
+**Requirements:**
+- A TUTK-streamed doorbell (`HL_DB2` / `WYZEDB3`). Gwell-protocol
+  doorbells (Doorbell Pro, Doorbell Pro 2, Doorbell Duo) use a different
+  protocol stack and are not supported by this feature.
+- The forked go2rtc binary — this add-on already ships it.
+- The camera must be streaming (the bridge keeps it connected
+  automatically for doorbells once `live_ring=true`).
+
+**Minimal config to enable live per-press ring:**
+
+```yaml
+events:
+  motion_api: 1500ms   # cloud poller for motion events + thumbnails
+  live_ring: true      # per-press local ring
+```
 
 ### Live video in a card (RTSP)
 
