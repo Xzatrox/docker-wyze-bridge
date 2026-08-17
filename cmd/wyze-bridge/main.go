@@ -4,7 +4,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -18,7 +17,6 @@ import (
 	"github.com/IDisposable/docker-wyze-bridge/internal/camera"
 	"github.com/IDisposable/docker-wyze-bridge/internal/config"
 	"github.com/IDisposable/docker-wyze-bridge/internal/events"
-	"github.com/IDisposable/docker-wyze-bridge/internal/fcm"
 	"github.com/IDisposable/docker-wyze-bridge/internal/go2rtcmgr"
 	"github.com/IDisposable/docker-wyze-bridge/internal/issues"
 	"github.com/IDisposable/docker-wyze-bridge/internal/mqtt"
@@ -30,7 +28,7 @@ import (
 )
 
 // Version is set at build time via ldflags.
-var Version = "4.9.2"
+var Version = "4.9.3"
 
 func main() {
 	// Load configuration
@@ -257,7 +255,6 @@ func main() {
 	// Start all background goroutines. The WebUI listener is already running
 	go camMgr.RunDiscoveryLoop(ctx)
 	deduper := startLiveRingWatcher(ctx, cfg, camMgr, go2rtcMgr, mqttClient, webhookClient, webServer)
-	startFCMListener(ctx, cfg, camMgr, apiClient, mqttClient, webhookClient, webServer, deduper)
 	startEventPoller(ctx, cfg, camMgr, mqttClient, webhookClient, webServer, apiClient, deduper)
 	go snapMgr.Run(ctx)
 	go snapPruner.Run(ctx)
@@ -598,110 +595,6 @@ func startLiveRingWatcher(ctx context.Context, cfg *config.Config, camMgr *camer
 		Msg("live TUTK ring watcher enabled (EVENTS_LIVE_RING=true)")
 
 	return deduper
-}
-
-// startFCMListener registers as an Android FCM client using Wyze's Firebase
-// credentials and maintains a persistent MCS connection to receive real-time
-// push notifications. When a doorbell ring push arrives, it dispatches via
-// the same dispatchButtonPress path as the TUTK watcher and cloud poller.
-//
-// The FCM registration state is persisted to StateDir/fcm_state.json so the
-// android_id and FCM token survive restarts. The FCM token is registered with
-// Wyze's API (set_push_info) so Wyze's backend delivers pushes to it.
-//
-// Returns early (no-op) when EVENTS_FCM=false.
-func startFCMListener(ctx context.Context, cfg *config.Config, camMgr *camera.Manager, apiClient *wyzeapi.Client, mqttClient *mqtt.Client, webhookClient *webhooks.Client, webServer *webui.Server, deduper *go2rtcmgr.RingDeduper) {
-	if !cfg.EventsFCM {
-		return
-	}
-
-	fcmLog := log.With().Str("c", "fcm").Logger()
-
-	// Load persisted FCM state (android_id, security_token, fcm_token).
-	statePath := cfg.StateDir + "/fcm_state.json"
-	var state fcm.State
-	if data, err := os.ReadFile(statePath); err == nil {
-		if err := json.Unmarshal(data, &state); err != nil {
-			fcmLog.Warn().Err(err).Msg("fcm_state.json parse error, starting fresh")
-			state = fcm.State{}
-		}
-	}
-
-	evLog := log.With().Str("c", "events").Logger()
-
-	client := fcm.New(state, fcmLog)
-
-	// Save state whenever we get a new FCM token.
-	client.OnTokenRefresh = func(token string) {
-		// Persist updated state.
-		updated := client.State()
-		if data, err := json.Marshal(updated); err == nil {
-			if err := os.WriteFile(statePath, data, 0600); err != nil {
-				fcmLog.Warn().Err(err).Msg("failed to persist FCM state")
-			} else {
-				fcmLog.Info().Msg("FCM state persisted")
-			}
-		}
-		// Register the new token with Wyze's push API.
-		if err := apiClient.RegisterPushToken(token); err != nil {
-			fcmLog.Warn().Err(err).Msg("failed to register FCM token with Wyze — pushes may not be delivered; will retry on next token refresh")
-		} else {
-			fcmLog.Info().Msg("FCM token registered with Wyze API")
-		}
-	}
-
-	// Handle incoming ring pushes.
-	client.OnRing = func(ev fcm.RingEvent) {
-		mac := ev.DeviceMAC
-		var camName string
-		for _, cam := range camMgr.Cameras() {
-			if cam.GetInfo().MAC == mac {
-				camName = cam.Name()
-				break
-			}
-		}
-		if camName == "" && ev.DeviceName != "" {
-			// Fall back to device name from push payload.
-			camName = ev.DeviceName
-		}
-		if camName == "" {
-			fcmLog.Warn().Str("mac", mac).Msg("fcm: ring received but can't resolve camera name")
-			return
-		}
-
-		synth := events.Event{
-			ID:   fmt.Sprintf("fcm:%s:%d", mac, ev.TS.UnixMilli()),
-			MAC:  mac,
-			Kind: events.KindButtonPress,
-			TS:   ev.TS,
-		}
-		dispatchButtonPress(ctx, synth, camName, deduper, mqttClient, webhookClient, webServer, evLog)
-	}
-
-	go func() {
-		// Ensure registration (does checkin + GCM register if needed),
-		// then start the MCS listener loop.
-		if _, err := client.EnsureRegistered(ctx); err != nil {
-			fcmLog.Error().Err(err).Msg("fcm: registration failed — FCM push listener not started")
-			return
-		}
-		// Persist initial state.
-		updated := client.State()
-		if data, err := json.Marshal(updated); err == nil {
-			_ = os.WriteFile(statePath, data, 0600)
-		}
-		// Register token with Wyze on first startup.
-		if token := updated.FCMToken; token != "" {
-			if err := apiClient.RegisterPushToken(token); err != nil {
-				fcmLog.Warn().Err(err).Msg("fcm: initial Wyze token registration failed")
-			} else {
-				fcmLog.Info().Msg("fcm: token registered with Wyze API")
-			}
-		}
-
-		fcmLog.Info().Msg("fcm: starting MCS listener (EVENTS_FCM=true)")
-		client.Run(ctx)
-	}()
 }
 
 func wireCameraStateChanges(ctx context.Context, cfg *config.Config, camMgr *camera.Manager, webServer *webui.Server, mqttClient *mqtt.Client, webhookClient *webhooks.Client, apiClient *wyzeapi.Client, recMgr *recording.Manager, state *wyzeapi.StateFile, snapMgr *snapshot.Manager) {

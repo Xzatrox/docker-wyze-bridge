@@ -1,5 +1,25 @@
 # Changelog
 
+## 4.9.3
+
+**Remove FCM push listener — approach is unviable.**
+
+Wyze's Firebase project blocks the FIS API (`API_KEY_SERVICE_BLOCKED`) for
+external callers, making GCM token registration impossible. Without a valid
+FCM registration token, MCS login is rejected by Google's servers. The FCM
+approach is fundamentally blocked at the infrastructure level.
+
+Removed:
+- `internal/fcm/fcm.go` — entire FCM client package
+- `startFCMListener()` from main.go
+- `RegisterPushToken()` from wyzeapi/commands.go
+- `EVENTS_FCM` config env var
+- `events.fcm` from HA add-on schema, run.sh, translations
+
+The TUTK live ring watcher (`EVENTS_LIVE_RING=true`) is the correct approach
+for real-time doorbell detection — it fires on the local P2P channel with
+sub-second latency, confirmed working via `notify=true` in stream URL.
+
 ## 4.9.2
 
 **Fix MCS login: read server version byte; fix resource field format.**

@@ -155,29 +155,11 @@ type Config struct {
 	// absorb the TUTK-fires-then-cloud-polls latency (~1.5s) without
 	// swallowing a second legitimate button press a few seconds later.
 	// Env: EVENTS_LIVE_RING_DEDUPE_WINDOW.
+	// EventsFCM was removed — FCM registration is blocked by Wyze's
+	// Firebase project for external callers (FIS_AUTH_ERROR / API_KEY_SERVICE_BLOCKED).
+	// Doorbell rings are detected via EVENTS_LIVE_RING (TUTK IOCTRL) instead.
 	EventsLiveRing             bool
 	EventsLiveRingDedupeWindow time.Duration
-
-	// FCM push notification listener (real-time doorbell ring).
-	//
-	// EventsFCM enables a simulated Android FCM client that registers
-	// with Google's Firebase Cloud Messaging service using Wyze's app
-	// credentials and maintains a persistent MCS connection to receive
-	// real-time push notifications. Doorbell ring pushes are dispatched
-	// through the same pipeline as the TUTK live ring watcher and cloud
-	// event poller.
-	//
-	// This is the most reliable doorbell detection method because it
-	// mirrors exactly how the Wyze mobile app receives ring notifications
-	// — sub-second latency, no polling, independent of TUTK streams.
-	//
-	// The FCM registration state (android_id, security_token, fcm_token)
-	// is persisted to StateDir/fcm_state.json so the device token
-	// survives restarts without re-registration. The FCM token is
-	// automatically registered with Wyze's push notification API.
-	//
-	// Env: EVENTS_FCM (default false).
-	EventsFCM bool
 }
 
 // CamOverride holds per-camera setting overrides.
@@ -315,9 +297,6 @@ func Load() (*Config, error) {
 		// Default off until the forked go2rtc is bundled and validated.
 		EventsLiveRing:             envBool("EVENTS_LIVE_RING", false),
 		EventsLiveRingDedupeWindow: envDuration("EVENTS_LIVE_RING_DEDUPE_WINDOW", 3*time.Second),
-
-		// FCM push listener for real-time doorbell ring detection.
-		EventsFCM: envBool("EVENTS_FCM", false),
 	}
 
 	// Derive default BRIDGE_PASSWORD from WYZE_EMAIL if not set
