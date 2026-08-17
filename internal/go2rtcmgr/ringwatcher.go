@@ -14,6 +14,11 @@ import (
 // notification on the live control channel.
 const ringNotifyPrefix = "WYZE-NOTIFY "
 
+// ioctrlDumpPrefix is the diagnostic dump emitted for every unsolicited
+// IOCTRL frame during Phase 0 capture. The bridge logs it at INFO so the
+// real ring CommandID can be identified from a live press.
+const ioctrlDumpPrefix = "WYZE-IOCTRL "
+
 // RingEvent is a per-press doorbell ring observed on the live TUTK
 // control channel (not the cloud poller). One of these is synthesized
 // each time the forked go2rtc prints a WYZE-NOTIFY line.
@@ -57,9 +62,18 @@ func NewRingWatcher(log zerolog.Logger) *RingWatcher {
 
 // HandleLogLine inspects one go2rtc stdout line. If it is a
 // WYZE-NOTIFY ring line, it parses the JSON payload and calls OnRing.
+// If it is a WYZE-IOCTRL diagnostic line, it logs it at INFO for
+// Phase 0 CommandID capture.
 // Returns true when the line was consumed (the caller should skip its
 // normal level mapping). Returns false for all other lines.
 func (w *RingWatcher) HandleLogLine(line string) (consumed bool) {
+	// Phase 0 diagnostic dump — log every unsolicited IOCTRL frame at
+	// INFO so the real ring CommandID is visible in the bridge log.
+	if strings.HasPrefix(line, ioctrlDumpPrefix) {
+		w.log.Info().Str("raw", line).Msg("TUTK unsolicited IOCTRL frame (Phase 0 capture)")
+		return true
+	}
+
 	if !strings.HasPrefix(line, ringNotifyPrefix) {
 		return false
 	}

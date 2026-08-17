@@ -116,16 +116,22 @@ func NewProducer(rawURL string) (*Producer, error) {
 	// the flag is absent — no WYZE-NOTIFY output, no extra goroutines.
 	if client.Notify() && client.conn != nil {
 		client.conn.NotifyFunc = func(cmdID uint16, hlPayload []byte) {
+			// Always emit every unsolicited IOCTRL frame unconditionally
+			// so the bridge can capture the real CommandID from a live press.
+			// Once the ring CommandID is confirmed, isRingCmdID can be
+			// tightened to filter only that value.
 			if isRingCmdID(cmdID) {
 				emitRingNotify("", mac)
-				return
 			}
-			if client.verbose {
-				// Log unknown notification CommandIDs at verbose level
-				// so they can be captured during Phase 0 spike work.
-				fmt.Printf("[Wyze] unsolicited IOCTRL notify: cmdID=%d (0x%04x) payloadLen=%d payload=%x\n",
-					cmdID, cmdID, len(hlPayload), hlPayload[:min(len(hlPayload), 32)])
+			// Always dump unknown frames too — this is the Phase 0 capture path.
+			// The bridge logs these at INFO so they're visible at default log level.
+			// Format: WYZE-IOCTRL <cmdID_decimal> <cmdID_hex> <payloadLen> <payload_hex>
+			payloadPreview := hlPayload
+			if len(payloadPreview) > 32 {
+				payloadPreview = payloadPreview[:32]
 			}
+			fmt.Printf("WYZE-IOCTRL cmdID=%d (0x%04x) payloadLen=%d payload=%x\n",
+				cmdID, cmdID, len(hlPayload), payloadPreview)
 		}
 	}
 
