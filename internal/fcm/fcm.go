@@ -122,8 +122,11 @@ func (c *Client) State() State {
 	return c.state
 }
 
-// EnsureRegistered performs Android checkin + GCM token registration if
-// not already done. Returns the FCM token to register with Wyze.
+// EnsureRegistered performs Android checkin and attempts GCM token
+// registration. GCM registration is best-effort — if it fails (e.g. because
+// Wyze's Firebase project blocks the FIS API for external callers), the MCS
+// connection still proceeds using just the android_id/security_token.
+// Returns the FCM token if obtained, or "" if registration failed.
 func (c *Client) EnsureRegistered(ctx context.Context) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -140,19 +143,29 @@ func (c *Client) EnsureRegistered(ctx context.Context) (string, error) {
 	}
 
 	if c.state.FCMToken == "" {
-		c.log.Info().Msg("fcm: registering with GCM")
+		c.log.Info().Msg("fcm: attempting GCM token registration")
 		tok, err := gcmRegister(ctx, c.state.AndroidID, c.state.SecurityToken)
 		if err != nil {
-			return "", fmt.Errorf("fcm: gcm register: %w", err)
-		}
-		c.state.FCMToken = tok
-		c.log.Info().Str("token_prefix", tok[:min(20, len(tok))]).Msg("fcm: GCM token obtained")
-		if c.OnTokenRefresh != nil {
-			go c.OnTokenRefresh(tok)
+			// GCM registration is not strictly required to connect to MCS.
+			// Log as warn and continue — MCS login uses android_id directly.
+			c.log.Warn().Err(err).Msg("fcm: GCM registration failed — connecting to MCS without FCM token (pushes may not arrive until Wyze registers this android_id)")
+		} else {
+			c.state.FCMToken = tok
+			c.log.Info().Str("token_prefix", tok[:min(20, len(tok))]).Msg("fcm: GCM token obtained")
+			if c.OnTokenRefresh != nil {
+				go c.OnTokenRefresh(tok)
+			}
 		}
 	}
 
-	return c.state.FCMToken, nil
+	// Return android_id as a synthetic "token" for Wyze registration when
+	// no FCM token was obtained — Wyze's set_push_info also accepts
+	// android_id-style tokens on some firmware versions.
+	token := c.state.FCMToken
+	if token == "" {
+		token = fmt.Sprintf("AID:%d", c.state.AndroidID)
+	}
+	return token, nil
 }
 
 // Run connects to the MCS endpoint and dispatches incoming push

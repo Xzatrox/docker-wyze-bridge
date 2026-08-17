@@ -1,5 +1,17 @@
 # Changelog
 
+## 4.9.0
+
+**FCM: proceed to MCS without GCM token when FIS is blocked.**
+
+Wyze's Firebase project blocks the FIS API for external callers, making GCM
+token registration impossible. GCM registration is now best-effort — on
+failure we warn and proceed to connect to MCS using the android_id/security_token
+from the checkin step directly. The MCS connection itself does not require an
+FCM token; it uses the AidLogin credentials. This gets us onto the MCS bus
+where we can receive Wyze's ring push notifications as long as Wyze sends them
+as topic/broadcast messages (which the Wyze app does for ring events).
+
 ## 4.8.9
 
 **Fix FCM: use correct production Firebase credentials (project 738316279406).**
