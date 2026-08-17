@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.8.5
+
+**Expose FCM Push Listener toggle in HA add-on UI.**
+
+- `home_assistant/wyze_bridge/config.yaml`: add `events.fcm: bool?` to schema
+- `home_assistant/wyze_bridge/run.sh`: map `events.fcm` → `EVENTS_FCM`
+- `home_assistant/wyze_bridge/translations/en.yaml`: label + description for the new toggle
+- Also fixes duplicate `description:` key on `events.live_ring_dedupe_window` entry
+
 ## 4.8.4
 
 **Add FCM push listener for real-time doorbell ring detection (`EVENTS_FCM=true`).**
