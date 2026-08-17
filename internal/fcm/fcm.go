@@ -52,10 +52,6 @@ const (
 	wyzeFirebaseProjectID = "fir-test-d9f49"
 	// wyzeAndroidPackage is the Wyze app package name.
 	wyzeAndroidPackage = "com.hualai"
-	// wyzeAndroidCert is unused — the FIS endpoint does not require
-	// x-android-cert for non-Play-Integrity flows.
-	// Kept as a placeholder in case Google enforces it in the future.
-	wyzeAndroidCert = ""
 	// mcsHost is the Firebase MCS endpoint for receiving pushes.
 	mcsHost = "mtalk.google.com:5228"
 	// mcsVersion identifies the protocol version in the login packet.
@@ -278,90 +274,31 @@ func androidCheckin(ctx context.Context) (androidID, securityToken uint64, err e
 
 // ---- GCM Token Registration ------------------------------------------------
 
-// fisToken obtains a Firebase Installation Service auth token by registering
-// a new Firebase Installation for the Wyze app. This short-lived token is
-// required as the X-Goog-Firebase-Installations-Auth header in the GCM
-// register request.
+// gcmRegister registers this virtual Android device with GCM/FCM to receive
+// push notifications for the Wyze app's sender ID.
 //
-// FIS endpoint: https://firebaseinstallations.googleapis.com/v1/projects/{projectID}/installations
-func fisToken(ctx context.Context) (string, string, error) {
-	// Generate a random FID (Firebase Installation ID) — 22 base64url chars.
-	fidBytes := make([]byte, 17) // 17 bytes → 23 base64 chars, we'll trim to 22
-	if _, err := rand.Read(fidBytes); err != nil {
-		return "", "", fmt.Errorf("fis: generate fid: %w", err)
-	}
-	// FID format: first 4 bits must be 0111 (0x70 mask on first byte)
-	fidBytes[0] = 0x70 | (fidBytes[0] & 0x0f)
-	fid := base64.URLEncoding.EncodeToString(fidBytes)[:22]
-
-	body := map[string]interface{}{
-		"fid":         fid,
-		"appId":       wyzeFirebaseAppID,
-		"authVersion": "FIS_v2",
-		"sdkVersion":  "a:17.0.0",
-	}
-	bodyJSON, _ := json.Marshal(body)
-
-	fisURL := fmt.Sprintf(
-		"https://firebaseinstallations.googleapis.com/v1/projects/%s/installations",
-		wyzeFirebaseProjectID,
-	)
-	req, err := http.NewRequestWithContext(ctx, "POST", fisURL, bytes.NewReader(bodyJSON))
-	if err != nil {
-		return "", "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-goog-api-key", wyzeFirebaseAPIKey)
-	req.Header.Set("x-android-package", wyzeAndroidPackage)
-	if wyzeAndroidCert != "" {
-		req.Header.Set("x-android-cert", wyzeAndroidCert)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", "", fmt.Errorf("fis: request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	b, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != 200 && resp.StatusCode != 201 {
-		return "", "", fmt.Errorf("fis: HTTP %d: %s", resp.StatusCode, string(b))
-	}
-
-	var fisResp struct {
-		Name      string `json:"name"`
-		FID       string `json:"fid"`
-		AuthToken struct {
-			Token     string `json:"token"`
-			ExpiresIn string `json:"expiresIn"`
-		} `json:"authToken"`
-	}
-	if err := json.Unmarshal(b, &fisResp); err != nil {
-		return "", "", fmt.Errorf("fis: decode response: %w", err)
-	}
-	if fisResp.AuthToken.Token == "" {
-		return "", "", fmt.Errorf("fis: empty auth token in response: %s", string(b))
-	}
-	return fisResp.AuthToken.Token, fid, nil
-}
-
+// Uses the legacy GCM register3 endpoint with AidLogin authorization.
+// The X-Goog-Firebase-Installations-Auth header is intentionally omitted —
+// it requires the Firebase Installations API which is blocked on Wyze's
+// API key for external callers. The GCM endpoint accepts registrations
+// without it when the AidLogin credentials are valid.
 func gcmRegister(ctx context.Context, androidID, securityToken uint64) (string, error) {
-	// Step 1: get a Firebase Installation auth token.
-	fisAuthToken, appInstanceID, err := fisToken(ctx)
-	if err != nil {
-		return "", fmt.Errorf("gcm register: get FIS token: %w", err)
-	}
+	// Generate a stable app instance ID from the android_id so it's
+	// deterministic across re-registrations with the same device.
+	appInstanceIDBytes := make([]byte, 16)
+	binary.BigEndian.PutUint64(appInstanceIDBytes[0:8], androidID)
+	binary.BigEndian.PutUint64(appInstanceIDBytes[8:16], securityToken)
+	appInstanceID := base64.URLEncoding.EncodeToString(appInstanceIDBytes)
 
 	form := url.Values{}
 	form.Set("app", wyzeAndroidPackage)
 	form.Set("X-subtype", wyzeFirebaseSenderID)
 	form.Set("sender", wyzeFirebaseSenderID)
 	form.Set("device", fmt.Sprintf("%d", androidID))
-	form.Set("appid", appInstanceID)
-	form.Set("X-appid", appInstanceID)
+	form.Set("appid", appInstanceID[:22]) // FID is 22 chars
+	form.Set("X-appid", appInstanceID[:22])
 	form.Set("X-scope", "*")
 	form.Set("X-firebase-app-name-hash", wyzeFirebaseProjectID)
-	form.Set("X-goog-firebase-installations-auth", fisAuthToken)
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST",
 		"https://android.clients.google.com/c2dm/register3",
