@@ -112,17 +112,20 @@ func NewProducer(rawURL string) (*Producer, error) {
 	mac := query.Get("mac")
 
 	// Install the ring notification watcher when &notify=true is set.
-	// NOTE: Phase 0 capture confirmed that HL_DB2 firmware 4.51.3.6791
-	// does NOT send an unsolicited IOCTRL ring notification to the
-	// connected TUTK client on button press. The ring goes to the Wyze
-	// cloud only. The NotifyFunc is wired but will never fire on this
-	// firmware — kept in place in case a different firmware or model
-	// exposes the signal.
+	// Every unsolicited IOCTRL frame is logged as WYZE-IOCTRL so the
+	// bridge can surface the CommandID in the log for Phase 0 capture.
+	// This lets us identify the VoIP call-initiation CommandID the
+	// camera sends when the doorbell button is pressed (distinct from
+	// the streaming ring CommandID 10020).
 	if client.Notify() && client.conn != nil {
 		client.conn.NotifyFunc = func(cmdID uint16, hlPayload []byte) {
 			if isRingCmdID(cmdID) {
 				emitRingNotify("", mac)
+				return
 			}
+			// Dump every other unsolicited IOCTRL so the bridge log
+			// captures the real ring/call CommandID on button press.
+			fmt.Printf("WYZE-IOCTRL cmdID=%d payloadLen=%d payload=%x\n", cmdID, len(hlPayload), hlPayload)
 		}
 	}
 

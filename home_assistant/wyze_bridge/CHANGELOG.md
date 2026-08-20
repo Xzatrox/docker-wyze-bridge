@@ -1,5 +1,22 @@
 # Changelog
 
+## 4.9.4
+
+**Instrument all unsolicited IOCTRL frames for VoIP call CommandID capture.**
+
+The HL_DB2 doorbell supports VoIP calls when the button is pressed — the
+camera initiates a two-way call over the same TUTK/DTLS channel used for
+streaming. The call initiation uses an IOCTRL command distinct from the
+ring notification (10020). Previously, only CommandIDs 10020/10032 were
+logged; all others were silently dropped.
+
+This release adds `WYZE-IOCTRL cmdID=N payloadLen=N payload=...` output
+for every unsolicited IOCTRL frame when `EVENTS_LIVE_RING=true`. The
+bridge surfaces these as INFO-level log lines. Press the doorbell button
+and check the log for `WYZE-IOCTRL` lines to identify the VoIP call
+CommandID — that will enable real-time ring detection without any cloud
+dependency or FCM token.
+
 ## 4.9.3
 
 **Remove FCM push listener — approach is unviable.**
