@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.9.5
+
+**Stop raw event dump spam; disable after capture session complete.**
+
+The full `raw_event` JSON dump added in 4.6.6 (first 10 events per restart)
+has served its purpose — the event shape is confirmed and button-press
+events carry `event_value: 10`. Setting `rawDumpsLeft: 0` stops the INFO
+spam on every restart.
+
 ## 4.9.4
 
 **Instrument all unsolicited IOCTRL frames for VoIP call CommandID capture.**
